@@ -8,6 +8,7 @@ export interface Clip {
   sourceEndMs: number;
   color?: string;
   videoUrl?: string;
+  audioUrl?: string;
 }
 
 export interface Track {

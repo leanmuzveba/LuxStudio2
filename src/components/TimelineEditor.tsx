@@ -18,6 +18,7 @@ import {
   Film,
   Music,
   Subtitles,
+  Upload,
 } from 'lucide-react';
 import { Track, Clip, SilenceSegment, CaptionSegment } from '../types';
 import { formatTimecode } from '../utils/formatters';
@@ -37,6 +38,7 @@ interface TimelineEditorProps {
   captions: CaptionSegment[];
   autoMergeEnabled: boolean;
   onToggleAutoMerge: (enabled: boolean) => void;
+  onSelectTrackFile: (trackId: 'track-video' | 'track-audio', file: File) => void;
 }
 
 export const TimelineEditor: React.FC<TimelineEditorProps> = ({
@@ -54,6 +56,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   captions,
   autoMergeEnabled,
   onToggleAutoMerge,
+  onSelectTrackFile,
 }) => {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(1); // 0.4x to 3.5x zoom
@@ -62,6 +65,8 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const timelineContainerRef = useRef<HTMLDivElement | null>(null);
   const bottomBarRef = useRef<HTMLDivElement | null>(null);
+  const videoFileInputRef = useRef<HTMLInputElement | null>(null);
+  const audioFileInputRef = useRef<HTMLInputElement | null>(null);
   const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
 
   // Drag handler for track headers width
@@ -417,14 +422,35 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                 <span className="text-[11px] font-semibold text-gray-300 truncate">Video</span>
               )}
             </div>
-            <button
-              id="btn-mute-track-video"
-              onClick={() => handleToggleMute('track-video')}
-              title={tracks[0]?.muted ? 'Unmute Video Track' : 'Mute Video Track'}
-              className="p-1 text-gray-400 hover:text-white hover:bg-white/10 transition-colors shrink-0"
-            >
-              {tracks[0]?.muted ? <VolumeX className="w-3 h-3 text-red-400" /> : <Volume2 className="w-3 h-3 text-gray-400" />}
-            </button>
+            <div className="flex items-center gap-0.5 shrink-0">
+              <input
+                ref={videoFileInputRef}
+                type="file"
+                accept="video/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) onSelectTrackFile('track-video', file);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                id="btn-select-track-video-file"
+                onClick={() => videoFileInputRef.current?.click()}
+                title="Select Video Track File"
+                className="p-1 text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <Upload className="w-3 h-3" />
+              </button>
+              <button
+                id="btn-mute-track-video"
+                onClick={() => handleToggleMute('track-video')}
+                title={tracks[0]?.muted ? 'Unmute Video Track' : 'Mute Video Track'}
+                className="p-1 text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                {tracks[0]?.muted ? <VolumeX className="w-3 h-3 text-red-400" /> : <Volume2 className="w-3 h-3 text-gray-400" />}
+              </button>
+            </div>
           </div>
 
           {/* Audio Track Header */}
@@ -440,14 +466,35 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                 <span className="text-[11px] font-semibold text-gray-300 truncate">Audio</span>
               )}
             </div>
-            <button
-              id="btn-mute-track-audio"
-              onClick={() => handleToggleMute('track-audio')}
-              title={tracks[1]?.muted ? 'Unmute Audio Track' : 'Mute Audio Track'}
-              className="p-1 text-gray-400 hover:text-white hover:bg-white/10 transition-colors shrink-0"
-            >
-              {tracks[1]?.muted ? <VolumeX className="w-3 h-3 text-red-400" /> : <Volume2 className="w-3 h-3 text-[#2dd4bf]" />}
-            </button>
+            <div className="flex items-center gap-0.5 shrink-0">
+              <input
+                ref={audioFileInputRef}
+                type="file"
+                accept="audio/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) onSelectTrackFile('track-audio', file);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                id="btn-select-track-audio-file"
+                onClick={() => audioFileInputRef.current?.click()}
+                title="Select Audio Track File"
+                className="p-1 text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <Upload className="w-3 h-3" />
+              </button>
+              <button
+                id="btn-mute-track-audio"
+                onClick={() => handleToggleMute('track-audio')}
+                title={tracks[1]?.muted ? 'Unmute Audio Track' : 'Mute Audio Track'}
+                className="p-1 text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                {tracks[1]?.muted ? <VolumeX className="w-3 h-3 text-red-400" /> : <Volume2 className="w-3 h-3 text-[#2dd4bf]" />}
+              </button>
+            </div>
           </div>
 
           {/* Auto Captions Track Header */}

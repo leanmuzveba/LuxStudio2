@@ -381,6 +381,46 @@ export function App() {
     updateTracksWithHistory(updatedTracks);
   };
 
+  // Select a replacement file for a track (Video or Audio), reading its real duration
+  const handleSelectTrackFile = (trackId: 'track-video' | 'track-audio', file: File) => {
+    const url = URL.createObjectURL(file);
+    const mediaEl = document.createElement(trackId === 'track-video' ? 'video' : 'audio');
+    mediaEl.preload = 'metadata';
+
+    const applyClip = (clipDurationMs: number) => {
+      if (trackId === 'track-video') {
+        setCustomVideoUrl(url);
+        setDurationMs(clipDurationMs);
+        setCurrentTimeMs(0);
+      }
+      const newTracks = tracks.map((track) => {
+        if (track.id !== trackId) return track;
+        const existing = track.clips[0];
+        const newClip: Clip = {
+          id: existing?.id ?? `clip-${trackId}-${Date.now()}`,
+          trackId,
+          name: file.name,
+          startMs: 0,
+          endMs: clipDurationMs,
+          sourceStartMs: 0,
+          sourceEndMs: clipDurationMs,
+          color: existing?.color,
+          ...(trackId === 'track-video' ? { videoUrl: url } : { audioUrl: url }),
+        };
+        return { ...track, clips: [newClip] };
+      });
+      updateTracksWithHistory(newTracks);
+    };
+
+    mediaEl.onloadedmetadata = () => {
+      applyClip(Math.round((mediaEl.duration || durationMs / 1000) * 1000));
+    };
+    mediaEl.onerror = () => {
+      applyClip(durationMs);
+    };
+    mediaEl.src = url;
+  };
+
   // Load Preset Sermon handler
   const handleLoadPreset = (presetType: '1hr' | '2hr') => {
     const dur = presetType === '1hr' ? 3600000 : 7200000;
@@ -565,6 +605,7 @@ export function App() {
                 captions={captions}
                 autoMergeEnabled={autoMergeEnabled}
                 onToggleAutoMerge={setAutoMergeEnabled}
+                onSelectTrackFile={handleSelectTrackFile}
               />
             </div>
           </>
