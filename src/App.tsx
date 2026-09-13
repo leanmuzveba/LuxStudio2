@@ -411,70 +411,125 @@ export function App() {
       />
 
       {/* Main Workspace Area with Left Navigation Bar below Logo */}
-      <main className="flex-1 flex overflow-hidden relative">
-        {/* Vertical Navigation Bar (Timeline Editor, AI Short Clips, Teaching Summary, Brand Kit) */}
-        <LeftNav
-          currentView={currentView}
-          onViewChange={setCurrentView}
-          aiClipsCount={aiClipCandidates.length}
-        />
+      <main className="flex-1 flex flex-col overflow-hidden relative">
+        {/* Upper Row: Left Nav + Active View (Timeline row lives outside this row so it can span full width) */}
+        <div className="flex-1 flex min-h-0 overflow-hidden relative">
+          {/* Vertical Navigation Bar (Timeline Editor, AI Short Clips, Teaching Summary, Brand Kit) */}
+          <LeftNav
+            currentView={currentView}
+            onViewChange={setCurrentView}
+            aiClipsCount={aiClipCandidates.length}
+          />
 
-        {/* View Workspace Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative">
-          {/* VIEW 1: TIMELINE & CAPTIONS EDITOR (Default) */}
-          {currentView === 'editor' && (
-            <div className="flex flex-col w-full h-full select-none">
-            {/* Upper Split: Video Stage on Left, Captions Editor on Right */}
-            <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden relative">
-              {/* Video Player Canvas Stage - Maximized space */}
-              <div className="flex-1 h-full min-h-[200px] relative overflow-hidden">
-                <VideoPlayer
-                  currentTimeMs={currentTimeMs}
-                  durationMs={durationMs}
-                  isPlaying={isPlaying}
-                  onTogglePlay={handleTogglePlay}
-                  onSeek={handleSeek}
-                  aspectRatio={aspectRatio}
-                  onAspectRatioChange={setAspectRatio}
-                  activeCaption={activeCaption}
-                  captionStyle={captionStyle}
-                  customVideoUrl={customVideoUrl}
-                />
-              </div>
+          {/* View Workspace Content Area */}
+          <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative">
+            {/* VIEW 1: Video Stage + Captions Editor (Timeline rendered full-width below) */}
+            {currentView === 'editor' && (
+              <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden relative select-none">
+                {/* Video Player Canvas Stage - Maximized space */}
+                <div className="flex-1 h-full min-h-[200px] relative overflow-hidden">
+                  <VideoPlayer
+                    currentTimeMs={currentTimeMs}
+                    durationMs={durationMs}
+                    isPlaying={isPlaying}
+                    onTogglePlay={handleTogglePlay}
+                    onSeek={handleSeek}
+                    aspectRatio={aspectRatio}
+                    onAspectRatioChange={setAspectRatio}
+                    activeCaption={activeCaption}
+                    captionStyle={captionStyle}
+                    customVideoUrl={customVideoUrl}
+                  />
+                </div>
 
-              {/* Adjustable Vertical Splitter (Drag to resize Video vs Captions) */}
-              <div
-                id="splitter-vertical-captions"
-                onMouseDown={handleStartDragRightPanel}
-                className={`hidden md:flex w-2.5 -mx-1 z-30 cursor-col-resize group relative items-center justify-center transition-colors select-none ${
-                  isDraggingH ? 'bg-[#00e5ff]' : 'hover:bg-[#00e5ff]/50 bg-transparent'
-                }`}
-                title="Drag to resize Captions panel (Adjustable boundary)"
-              >
-                <div className="w-1 h-full bg-[#14213D] group-hover:bg-[#00e5ff] transition-colors flex items-center justify-center">
-                  <div className="w-1 h-8 bg-white/40 group-hover:bg-white rounded-full" />
+                {/* Adjustable Vertical Splitter (Drag to resize Video vs Captions) */}
+                <div
+                  id="splitter-vertical-captions"
+                  onMouseDown={handleStartDragRightPanel}
+                  className={`hidden md:flex w-2.5 -mx-1 z-30 cursor-col-resize group relative items-center justify-center transition-colors select-none ${
+                    isDraggingH ? 'bg-[#00e5ff]' : 'hover:bg-[#00e5ff]/50 bg-transparent'
+                  }`}
+                  title="Drag to resize Captions panel (Adjustable boundary)"
+                >
+                  <div className="w-1 h-full bg-[#14213D] group-hover:bg-[#00e5ff] transition-colors flex items-center justify-center">
+                    <div className="w-1 h-8 bg-white/40 group-hover:bg-white rounded-full" />
+                  </div>
+                </div>
+
+                {/* Right Captions Customizer & Transcript Drawer (Adjustable Width) */}
+                <div
+                  id="captions-panel-container"
+                  style={{ width: `${rightPanelWidth}px` }}
+                  className="w-full shrink-0 h-64 md:h-full border-t md:border-t-0 flex flex-col overflow-hidden"
+                >
+                  <CaptionsEditor
+                    captions={captions}
+                    onCaptionsChange={setCaptions}
+                    captionStyle={captionStyle}
+                    onStyleChange={setCaptionStyle}
+                    currentTimeMs={currentTimeMs}
+                    onSeek={handleSeek}
+                    onAutoGenerateCaptions={handleAutoGenerateCaptions}
+                    isTranscribing={isTranscribing}
+                  />
                 </div>
               </div>
+            )}
 
-              {/* Right Captions Customizer & Transcript Drawer (Adjustable Width) */}
-              <div
-                id="captions-panel-container"
-                style={{ width: `${rightPanelWidth}px` }}
-                className="w-full shrink-0 h-64 md:h-full border-t md:border-t-0 flex flex-col overflow-hidden"
-              >
-                <CaptionsEditor
-                  captions={captions}
-                  onCaptionsChange={setCaptions}
-                  captionStyle={captionStyle}
-                  onStyleChange={setCaptionStyle}
-                  currentTimeMs={currentTimeMs}
-                  onSeek={handleSeek}
-                  onAutoGenerateCaptions={handleAutoGenerateCaptions}
-                  isTranscribing={isTranscribing}
+            {/* VIEW 2: AI SHORT CLIPS */}
+            {currentView === 'clips' && (
+              <div className="w-full h-full">
+                <AIClipsView
+                  candidates={aiClipCandidates}
+                  onSelectClip={handleSelectAIClip}
+                  onExportClip={(clip) => {
+                    setCurrentTimeMs(clip.startMs);
+                    setAspectRatio('9:16');
+                    setIsExportOpen(true);
+                  }}
+                  onGenerateMore={handleGenerateMoreAIClips}
+                  isGenerating={isGeneratingClips}
+                  onUpdateCandidate={(updated) =>
+                    setAiClipCandidates((prev) =>
+                      prev.map((c) => (c.id === updated.id ? updated : c))
+                    )
+                  }
+                  onDeleteCandidate={(id) =>
+                    setAiClipCandidates((prev) => prev.filter((c) => c.id !== id))
+                  }
+                  branding={branding}
                 />
               </div>
-            </div>
+            )}
 
+            {/* VIEW 3: TEACHING SUMMARY & 5 HASHTAGS */}
+            {currentView === 'summary' && (
+              <div className="w-full h-full">
+                <TeachingSummaryView
+                  summaryData={teachingSummary}
+                  onRegenerate={handleRegenerateSummary}
+                  isRegenerating={isRegeneratingSummary}
+                  branding={branding}
+                  onUpdateSummary={setTeachingSummary}
+                />
+              </div>
+            )}
+
+            {/* VIEW 4: BRAND SETTINGS & CHURCH INFO */}
+            {currentView === 'brand' && (
+              <div className="w-full h-full">
+                <BrandSettingsView
+                  branding={branding}
+                  onUpdateBranding={setBranding}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Full-Width Timeline Row - extends left under the Views nav to maximize space */}
+        {currentView === 'editor' && (
+          <>
             {/* Adjustable Horizontal Splitter (Drag to resize Timeline height) */}
             <div
               id="splitter-horizontal-timeline"
@@ -489,11 +544,11 @@ export function App() {
               </div>
             </div>
 
-            {/* Lower Half: Multi-Track Timeline Editor (Adjustable Height) */}
+            {/* Full-Width Multi-Track Timeline Editor (Adjustable Height) */}
             <div
               id="timeline-panel-container"
               style={{ height: `${timelineHeight}px` }}
-              className="shrink-0 overflow-hidden"
+              className="shrink-0 w-full overflow-hidden"
             >
               <TimelineEditor
                 tracks={tracks}
@@ -512,58 +567,8 @@ export function App() {
                 onToggleAutoMerge={setAutoMergeEnabled}
               />
             </div>
-          </div>
+          </>
         )}
-
-        {/* VIEW 2: AI SHORT CLIPS */}
-        {currentView === 'clips' && (
-          <div className="w-full h-full">
-            <AIClipsView
-              candidates={aiClipCandidates}
-              onSelectClip={handleSelectAIClip}
-              onExportClip={(clip) => {
-                setCurrentTimeMs(clip.startMs);
-                setAspectRatio('9:16');
-                setIsExportOpen(true);
-              }}
-              onGenerateMore={handleGenerateMoreAIClips}
-              isGenerating={isGeneratingClips}
-              onUpdateCandidate={(updated) =>
-                setAiClipCandidates((prev) =>
-                  prev.map((c) => (c.id === updated.id ? updated : c))
-                )
-              }
-              onDeleteCandidate={(id) =>
-                setAiClipCandidates((prev) => prev.filter((c) => c.id !== id))
-              }
-              branding={branding}
-            />
-          </div>
-        )}
-
-        {/* VIEW 3: TEACHING SUMMARY & 5 HASHTAGS */}
-        {currentView === 'summary' && (
-          <div className="w-full h-full">
-            <TeachingSummaryView
-              summaryData={teachingSummary}
-              onRegenerate={handleRegenerateSummary}
-              isRegenerating={isRegeneratingSummary}
-              branding={branding}
-              onUpdateSummary={setTeachingSummary}
-            />
-          </div>
-        )}
-
-        {/* VIEW 4: BRAND SETTINGS & CHURCH INFO */}
-        {currentView === 'brand' && (
-          <div className="w-full h-full">
-            <BrandSettingsView
-              branding={branding}
-              onUpdateBranding={setBranding}
-            />
-          </div>
-        )}
-        </div>
       </main>
 
       {/* Export Modal */}
