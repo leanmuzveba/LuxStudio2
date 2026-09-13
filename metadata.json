@@ -1,0 +1,6 @@
+{
+  "name": "LuxStudio2",
+  "description": "Customized video editor and AI content generator for teachings and sermons, featuring timeline clipping, auto captions, silence removal, and short clip creation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
