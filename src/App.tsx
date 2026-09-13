@@ -628,7 +628,6 @@ export function App() {
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
         onUploadSuccess={handleUploadSuccess}
-        onLoadPreset={handleLoadPreset}
       />
     </div>
   );

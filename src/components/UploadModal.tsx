@@ -6,22 +6,18 @@ import {
   CheckCircle2,
   AlertCircle,
   Sparkles,
-  Clock,
-  Film,
 } from 'lucide-react';
 
 interface UploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUploadSuccess: (file: File, durationMs: number) => void;
-  onLoadPreset: (presetType: '1hr' | '2hr') => void;
 }
 
 export const UploadModal: React.FC<UploadModalProps> = ({
   isOpen,
   onClose,
   onUploadSuccess,
-  onLoadPreset,
 }) => {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -168,51 +164,6 @@ export const UploadModal: React.FC<UploadModalProps> = ({
               </div>
             </div>
           )}
-
-          {/* Instant Presets (Useful for rapid testing & demos of 1-2hr recordings) */}
-          <div className="pt-2 border-t border-white/5">
-            <span className="block text-xs font-semibold text-gray-300 mb-2.5">
-              Or Load A Pre-Analyzed Teaching Session:
-            </span>
-
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => {
-                  onLoadPreset('1hr');
-                  onClose();
-                }}
-                className="p-3 bg-[#0e162b] hover:bg-[#14213D] border border-white/10 text-left transition-all group"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-bold text-xs text-white group-hover:text-[#FCA311]">
-                    1-Hour Sunday Teaching
-                  </span>
-                  <Clock className="w-3.5 h-3.5 text-[#FCA311]" />
-                </div>
-                <p className="text-[10px] text-gray-400 leading-snug">
-                  "Divine Purpose &amp; Authority" • Complete with waveforms, silences &amp; 3 short clips
-                </p>
-              </button>
-
-              <button
-                onClick={() => {
-                  onLoadPreset('2hr');
-                  onClose();
-                }}
-                className="p-3 bg-[#0e162b] hover:bg-[#14213D] border border-white/10 text-left transition-all group"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-bold text-xs text-white group-hover:text-[#FCA311]">
-                    2-Hour Full Service
-                  </span>
-                  <Film className="w-3.5 h-3.5 text-[#FCA311]" />
-                </div>
-                <p className="text-[10px] text-gray-400 leading-snug">
-                  Full Service recording with worship, scripture teaching &amp; altar call segments
-                </p>
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
