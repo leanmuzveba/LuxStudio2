@@ -3,14 +3,12 @@ import React from 'react';
 interface LuxLogoProps {
   size?: 'sm' | 'md' | 'lg';
   showText?: boolean;
-  showTagline?: boolean;
   className?: string;
 }
 
 export const LuxLogo: React.FC<LuxLogoProps> = ({
   size = 'md',
   showText = true,
-  showTagline = true,
   className = '',
 }) => {
   const iconSizes = {
@@ -74,11 +72,6 @@ export const LuxLogo: React.FC<LuxLogoProps> = ({
               2.0
             </span>
           </div>
-          {showTagline && (
-            <span className="text-[9px] tracking-[0.22em] font-bold text-gray-400 uppercase mt-0.5">
-              Edit • Automate • Publish
-            </span>
-          )}
         </div>
       )}
     </div>
