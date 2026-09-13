@@ -256,6 +256,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         id="player-controls-bar"
         className="mt-1 w-full max-w-2xl bg-[#090f1d]/95 backdrop-blur-md border border-white/10 px-4 py-1.5 flex items-center justify-between gap-3 shadow-lg shrink-0"
       >
+        {/* Timecode Readout with frame rate accuracy (HH:MM:SS:FF) */}
+        <div className="font-mono text-xs text-gray-300 flex items-center gap-1.5 font-semibold bg-black/40 px-2 py-0.5 border border-white/5">
+          <span className="text-[#00e5ff] font-bold">
+            {formatTimecode(currentTimeMs, true, frameRate)}
+          </span>
+          <span className="text-gray-500">/</span>
+          <span className="text-gray-400">
+            {formatTimecode(durationMs, true, frameRate)}
+          </span>
+        </div>
+
         {/* Playback Controls: Backward, Play, Pause, Stop, Fast Forward */}
         <div className="flex items-center gap-1">
           {/* Backward */}
@@ -315,17 +326,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           >
             <FastForward className="w-4 h-4 fill-current" />
           </button>
-        </div>
-
-        {/* Timecode Readout with frame rate accuracy (HH:MM:SS:FF) */}
-        <div className="font-mono text-xs text-gray-300 flex items-center gap-1.5 font-semibold bg-black/40 px-2 py-0.5 border border-white/5">
-          <span className="text-[#00e5ff] font-bold">
-            {formatTimecode(currentTimeMs, true, frameRate)}
-          </span>
-          <span className="text-gray-500">/</span>
-          <span className="text-gray-400">
-            {formatTimecode(durationMs, true, frameRate)}
-          </span>
         </div>
 
         {/* Speed, Ratio & Volume controls */}
