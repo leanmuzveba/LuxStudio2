@@ -438,7 +438,6 @@ export function App() {
                   onAspectRatioChange={setAspectRatio}
                   activeCaption={activeCaption}
                   captionStyle={captionStyle}
-                  branding={branding}
                   customVideoUrl={customVideoUrl}
                 />
               </div>

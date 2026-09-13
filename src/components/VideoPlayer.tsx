@@ -14,7 +14,7 @@ import {
   Sparkles,
   Film,
 } from 'lucide-react';
-import { AspectRatio, CaptionSegment, CaptionStyle, ChurchBranding } from '../types';
+import { AspectRatio, CaptionSegment, CaptionStyle } from '../types';
 import { drawVideoFrame } from '../utils/canvasRenderer';
 import { formatTimecode } from '../utils/formatters';
 
@@ -28,7 +28,6 @@ interface VideoPlayerProps {
   onAspectRatioChange?: (ratio: AspectRatio) => void;
   activeCaption: CaptionSegment | null;
   captionStyle: CaptionStyle;
-  branding: ChurchBranding;
   customVideoUrl?: string | null;
 }
 
@@ -42,7 +41,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onAspectRatioChange,
   activeCaption,
   captionStyle,
-  branding,
   customVideoUrl,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -52,7 +50,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [frameRate, setFrameRate] = useState<number>(30);
   const [volume, setVolume] = useState<number>(1);
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [showSafeZones, setShowSafeZones] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   useEffect(() => {
@@ -96,9 +93,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             aspectRatio,
             activeCaption,
             captionStyle,
-            branding,
             customVideoElement: videoRef.current,
-            showSafeZones,
           });
         }
       }
@@ -107,7 +102,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, [currentTimeMs, aspectRatio, activeCaption, captionStyle, branding, showSafeZones]);
+  }, [currentTimeMs, aspectRatio, activeCaption, captionStyle]);
 
   // Synchronize custom video element if uploaded
   useEffect(() => {

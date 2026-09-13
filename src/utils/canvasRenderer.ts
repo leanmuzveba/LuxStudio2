@@ -1,4 +1,4 @@
-import { AspectRatio, CaptionSegment, CaptionStyle, ChurchBranding } from '../types';
+import { AspectRatio, CaptionSegment, CaptionStyle } from '../types';
 
 interface RenderFrameOptions {
   ctx: CanvasRenderingContext2D;
@@ -8,9 +8,7 @@ interface RenderFrameOptions {
   aspectRatio: AspectRatio;
   activeCaption: CaptionSegment | null;
   captionStyle: CaptionStyle;
-  branding: ChurchBranding;
   customVideoElement?: HTMLVideoElement | null;
-  showSafeZones?: boolean;
 }
 
 export function drawVideoFrame({
@@ -21,9 +19,7 @@ export function drawVideoFrame({
   aspectRatio,
   activeCaption,
   captionStyle,
-  branding,
   customVideoElement,
-  showSafeZones = false,
 }: RenderFrameOptions) {
   // If user uploaded their own video and it's ready, draw it!
   if (
@@ -37,26 +33,12 @@ export function drawVideoFrame({
     drawSermonBackground(ctx, width, height, timeMs, aspectRatio);
   }
 
-  // Draw Lower-Third (if enabled and within first 15s or every minute for 8s)
-  const isLowerThirdTime =
-    (timeMs >= 3000 && timeMs <= 14000) ||
-    (timeMs % 60000 >= 30000 && timeMs % 60000 <= 40000);
-
-  if (branding.showLowerThird && isLowerThirdTime) {
-    drawLowerThird(ctx, width, height, branding, aspectRatio);
-  }
-
   // Draw End Card (if within last 6 seconds of a clip or active)
   // Drawn if specified or at final outro
 
   // Draw Live Captions
   if (activeCaption) {
     drawCaptionOverlay(ctx, width, height, activeCaption, captionStyle, timeMs, aspectRatio);
-  }
-
-  // Safe zone guidelines simulator for mobile 9:16 (TikTok/Reels UI)
-  if (aspectRatio === '9:16' && showSafeZones) {
-    drawSafeZoneGuides(ctx, width, height);
   }
 }
 
@@ -171,28 +153,6 @@ function drawSermonBackground(
   ctx.fillText('HIGHER LIFE COMMISSION', w * 0.5, pulpitY + 62);
   ctx.restore();
 
-  // Subtle live broadcast indicator top left
-  ctx.save();
-  ctx.fillStyle = 'rgba(20, 33, 61, 0.8)';
-  roundRect(ctx, 20, 20, 110, 30, 6);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(252, 163, 17, 0.3)';
-  ctx.lineWidth = 1;
-  roundRect(ctx, 20, 20, 110, 30, 6);
-  ctx.stroke();
-
-  // Red live dot
-  ctx.fillStyle = '#ef4444';
-  ctx.beginPath();
-  ctx.arc(36, 35, 5, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = '700 11px sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('SERMON HD', 48, 39);
-  ctx.restore();
-
   // Audio level meters on top right
   drawAudioMeter(ctx, w - 80, 24, timeMs);
 }
@@ -209,55 +169,6 @@ function drawAudioMeter(ctx: CanvasRenderingContext2D, x: number, y: number, tim
     ctx.fillStyle = i >= 4 ? '#ef4444' : i >= 3 ? '#FCA311' : '#22c55e';
     ctx.fillRect(x + i * 7, y + maxH - h, barW, h);
   }
-  ctx.restore();
-}
-
-function drawLowerThird(
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  branding: ChurchBranding,
-  aspectRatio: AspectRatio
-) {
-  ctx.save();
-  const isVertical = w < h || aspectRatio === '9:16' || aspectRatio === '3:4';
-  const barW = isVertical ? w * 0.9 : Math.min(540, w * 0.7);
-  const barH = isVertical ? 68 : 60;
-  const x = isVertical ? (w - barW) / 2 : 30;
-  const y = isVertical ? h * 0.76 : h * 0.82;
-
-  // Background pill in deep navy #14213D with gold border
-  ctx.fillStyle = 'rgba(20, 33, 61, 0.94)';
-  roundRect(ctx, x, y, barW, barH, 10);
-  ctx.fill();
-
-  // Left accent bar in #FCA311
-  ctx.fillStyle = '#FCA311';
-  roundRect(ctx, x, y, 6, barH, [10, 0, 0, 10]);
-  ctx.fill();
-
-  // Gold border
-  ctx.strokeStyle = 'rgba(252, 163, 17, 0.6)';
-  ctx.lineWidth = 1.5;
-  roundRect(ctx, x, y, barW, barH, 10);
-  ctx.stroke();
-
-  // Church Name
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = `800 ${isVertical ? '13px' : '14px'} "Plus Jakarta Sans", sans-serif`;
-  ctx.textAlign = 'left';
-  ctx.fillText(branding.churchName.toUpperCase(), x + 20, y + 22);
-
-  // Address
-  ctx.fillStyle = '#E5E5E5';
-  ctx.font = `500 ${isVertical ? '10px' : '11px'} "Plus Jakarta Sans", sans-serif`;
-  ctx.fillText(`📍 ${branding.address}`, x + 20, y + 39);
-
-  // Service Times
-  ctx.fillStyle = '#FCA311';
-  ctx.font = `600 ${isVertical ? '10px' : '11px'} "Plus Jakarta Sans", sans-serif`;
-  ctx.fillText(`⏰ ${branding.serviceTimes}`, x + 20, y + 54);
-
   ctx.restore();
 }
 
@@ -417,32 +328,6 @@ function drawCaptionOverlay(
     ctx.restore();
   });
 
-  ctx.restore();
-}
-
-function drawSafeZoneGuides(ctx: CanvasRenderingContext2D, w: number, h: number) {
-  ctx.save();
-  ctx.strokeStyle = 'rgba(252, 163, 17, 0.4)';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4, 4]);
-
-  // Top header margin (TikTok/Instagram header safe zone: ~120px)
-  const topSafe = h * 0.12;
-  ctx.strokeRect(w * 0.05, topSafe, w * 0.9, h * 0.72);
-
-  // Right-side icons block (Heart, comments, share buttons)
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-  const rightColW = w * 0.18;
-  ctx.fillRect(w - rightColW, h * 0.45, rightColW - 10, h * 0.35);
-
-  // Bottom caption area
-  ctx.fillRect(w * 0.05, h * 0.84, w * 0.75, h * 0.12);
-
-  // Small guide label
-  ctx.fillStyle = '#FCA311';
-  ctx.font = '600 10px sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('9:16 CAPTION SAFE ZONE', w * 0.08, topSafe + 16);
   ctx.restore();
 }
 
