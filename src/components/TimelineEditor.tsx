@@ -22,6 +22,9 @@ import {
 } from 'lucide-react';
 import { Track, Clip, SilenceSegment, CaptionSegment } from '../types';
 import { formatTimecode } from '../utils/formatters';
+import { splitTracksAtTime } from '../utils/timelineOps';
+import { decodeAudioSource, computeWaveformPeaks } from '../utils/audioAnalysis';
+import { getVideoThumbnails } from '../utils/videoThumbnails';
 
 interface TimelineEditorProps {
   tracks: Track[];
@@ -33,6 +36,7 @@ interface TimelineEditorProps {
   onTogglePlay: () => void;
   silenceSegments: SilenceSegment[];
   isSilenceCut: boolean;
+  isDetectingSilences?: boolean;
   onAutoCutSilences: () => void;
   onRestoreSilences: () => void;
   captions: CaptionSegment[];
@@ -51,6 +55,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   onTogglePlay,
   silenceSegments,
   isSilenceCut,
+  isDetectingSilences = false,
   onAutoCutSilences,
   onRestoreSilences,
   captions,
@@ -121,55 +126,9 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
     };
   }, []);
 
-  // Split selected clip at playhead
+  // Split every track (video + audio) at the playhead, so a cut always stays in sync
   const handleSplitClipAtPlayhead = () => {
-    let splitOccurred = false;
-    const newTracks = tracks.map((track) => {
-      const clipToSplitIndex = track.clips.findIndex(
-        (c) =>
-          c.id === selectedClipId ||
-          (selectedClipId === null &&
-            currentTimeMs > c.startMs + 500 &&
-            currentTimeMs < c.endMs - 500)
-      );
-
-      if (clipToSplitIndex === -1) return track;
-
-      const clip = track.clips[clipToSplitIndex];
-      // Only split if playhead is strictly inside the clip
-      if (currentTimeMs <= clip.startMs + 400 || currentTimeMs >= clip.endMs - 400) {
-        return track;
-      }
-
-      splitOccurred = true;
-      const firstPart: Clip = {
-        ...clip,
-        id: `${clip.id}-a-${Date.now()}`,
-        name: `${clip.name} (Part 1)`,
-        endMs: currentTimeMs,
-        sourceEndMs: clip.sourceStartMs + (currentTimeMs - clip.startMs),
-      };
-
-      const secondPart: Clip = {
-        ...clip,
-        id: `${clip.id}-b-${Date.now() + 1}`,
-        name: `${clip.name} (Part 2)`,
-        startMs: currentTimeMs,
-        sourceStartMs: clip.sourceStartMs + (currentTimeMs - clip.startMs),
-      };
-
-      const updatedClips = [...track.clips];
-      updatedClips.splice(clipToSplitIndex, 1, firstPart, secondPart);
-
-      return {
-        ...track,
-        clips: updatedClips,
-      };
-    });
-
-    if (splitOccurred) {
-      onTracksChange(newTracks);
-    }
+    onTracksChange(splitTracksAtTime(tracks, currentTimeMs));
   };
 
   // Merge adjacent clips
@@ -283,7 +242,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
             id="btn-split-clip"
             onClick={handleSplitClipAtPlayhead}
             className="p-1.5 bg-[#14213D] hover:bg-[#1f335e] text-white border border-white/10 transition-colors shadow-sm active:scale-95"
-            title="Split Clip at Playhead (S)"
+            title="Split All Tracks at Playhead"
             aria-label="Split Clip"
           >
             <Scissors className="w-4 h-4 text-[#FCA311]" />
@@ -338,10 +297,15 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
             <button
               id="btn-auto-cut-silence"
               onClick={onAutoCutSilences}
-              className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-[#FCA311] to-[#f78e05] text-black font-bold shadow-md shadow-[#FCA311]/20 hover:brightness-110 active:scale-95 transition-all"
+              disabled={isDetectingSilences || silenceSegments.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-[#FCA311] to-[#f78e05] text-black font-bold shadow-md shadow-[#FCA311]/20 hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:pointer-events-none"
             >
               <Wand2 className="w-3.5 h-3.5" />
-              <span>Auto Cut Silences ({silenceSegments.length} detected)</span>
+              <span>
+                {isDetectingSilences
+                  ? 'Detecting silences…'
+                  : `Auto Cut Silences (${silenceSegments.length} detected)`}
+              </span>
             </button>
           ) : (
             <div className="flex items-center gap-2">
@@ -581,20 +545,14 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                     </span>
                   </div>
 
-                  {/* Clip video filmstrip graphic thumbnail simulation */}
-                  <div className="flex items-center gap-1 opacity-40 overflow-hidden h-3">
-                    <div className="w-6 h-2.5 bg-white/30 shrink-0"></div>
-                    <div className="w-6 h-2.5 bg-white/20 shrink-0"></div>
-                    <div className="w-6 h-2.5 bg-white/30 shrink-0"></div>
-                    <div className="w-6 h-2.5 bg-white/20 shrink-0"></div>
-                    <div className="w-6 h-2.5 bg-white/30 shrink-0"></div>
-                  </div>
+                  {/* Real video frame filmstrip */}
+                  <VideoClipFilmstrip clip={clip} />
                 </div>
               );
             })}
           </div>
 
-          {/* Audio Track Lane - High-density thin lines waveform matching screenshot 2 */}
+          {/* Audio Track Lane - real waveform driven by the actual decoded audio */}
           <div className="h-16 border-b border-white/5 relative p-1 flex items-center bg-[#05111a]">
             {tracks[1]?.clips.map((clip) => {
               const left = (clip.startMs / durationMs) * 100;
@@ -619,11 +577,10 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                     </span>
                   </div>
 
-                  {/* Waveform rendered as delicate thin vertical lines */}
-                  <div className="w-full pb-1">
+                  {/* Real waveform, driven by the clip's actual decoded audio */}
+                  <div className="w-full pb-1 flex-1 min-h-0">
                     <ThinAudioWaveform
-                      clipStartMs={clip.startMs}
-                      clipEndMs={clip.endMs}
+                      clip={clip}
                       silenceSegments={silenceSegments}
                       isSilenceCut={isSilenceCut}
                     />
@@ -738,50 +695,163 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   );
 };
 
+/** Tracks an element's rendered width, debounced, for zoom-responsive detail. */
+function useDebouncedWidth(delayMs = 120): [React.RefObject<HTMLDivElement>, number] {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let timeout: number | undefined;
+    const observer = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (!w) return;
+      window.clearTimeout(timeout);
+      timeout = window.setTimeout(() => setWidth(Math.round(w)), delayMs);
+    });
+    observer.observe(el);
+    return () => {
+      window.clearTimeout(timeout);
+      observer.disconnect();
+    };
+  }, [delayMs]);
+
+  return [ref as React.RefObject<HTMLDivElement>, width];
+}
+
 /**
- * Component to render realistic high-density thin waveform lines (as seen in CapCut / Screenshot 2)
+ * Renders the clip's real waveform (one bar per pixel of rendered width, so
+ * zooming the timeline in/out reveals more or less actual detail) instead of
+ * a simulated shape.
  */
 const ThinAudioWaveform: React.FC<{
-  clipStartMs: number;
-  clipEndMs: number;
+  clip: Clip;
   silenceSegments: SilenceSegment[];
   isSilenceCut: boolean;
-}> = ({ clipStartMs, clipEndMs, silenceSegments, isSilenceCut }) => {
-  const duration = Math.max(1000, clipEndMs - clipStartMs);
-  // High density of thin lines: 180 vertical lines across the clip width
-  const lineCount = 180;
-  const bars: { id: number; height: number; isSilence: boolean }[] = [];
+}> = ({ clip, silenceSegments, isSilenceCut }) => {
+  const [containerRef, width] = useDebouncedWidth();
+  const [peaks, setPeaks] = useState<{ min: Float32Array; max: Float32Array } | null>(null);
+  const [failed, setFailed] = useState(false);
+  const sourceUrl = clip.audioUrl || clip.videoUrl;
 
-  for (let i = 0; i < lineCount; i++) {
-    const t = clipStartMs + (i / lineCount) * duration;
-    const isSilence =
-      !isSilenceCut &&
-      silenceSegments.some((sil) => t >= sil.startMs && t <= sil.endMs);
+  useEffect(() => {
+    if (!sourceUrl || width <= 0) return;
+    let cancelled = false;
+    const bucketCount = Math.max(20, Math.min(2000, width));
 
-    let heightPercent = 6;
-    if (!isSilence) {
-      // Harmonic simulation of human vocal frequency & dynamic envelope
-      const wave1 = Math.sin(i * 0.42) * 30;
-      const wave2 = Math.cos(i * 0.88) * 25;
-      const wave3 = Math.sin(i * 2.1) * 15;
-      const speechEnvelope = (Math.sin(i * 0.14) + 1.2) * 14;
-      heightPercent = Math.max(8, Math.min(95, 20 + wave1 + wave2 + wave3 + speechEnvelope));
-    }
+    decodeAudioSource(sourceUrl)
+      .then((buffer) => {
+        if (cancelled) return;
+        setPeaks(
+          computeWaveformPeaks(
+            buffer,
+            bucketCount,
+            clip.sourceStartMs / 1000,
+            clip.sourceEndMs / 1000
+          )
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
 
-    bars.push({ id: i, height: heightPercent, isSilence });
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceUrl, clip.sourceStartMs, clip.sourceEndMs, width]);
+
+  if (!sourceUrl || failed) {
+    return (
+      <div ref={containerRef} className="w-full h-full flex items-center justify-center pointer-events-none">
+        <span className="text-[8px] text-cyan-200/30 font-mono uppercase tracking-wider">
+          No audio
+        </span>
+      </div>
+    );
+  }
+
+  if (!peaks) {
+    return <div ref={containerRef} className="w-full h-full pointer-events-none" />;
+  }
+
+  const duration = Math.max(1000, clip.endMs - clip.startMs);
+  const bucketCount = peaks.min.length;
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full h-full flex items-end justify-between gap-[1px] px-1 overflow-hidden pointer-events-none"
+    >
+      {Array.from({ length: bucketCount }, (_, i) => {
+        const t = clip.startMs + (i / bucketCount) * duration;
+        const isSilence =
+          !isSilenceCut && silenceSegments.some((sil) => t >= sil.startMs && t <= sil.endMs);
+        const amplitude = Math.max(Math.abs(peaks.min[i]), Math.abs(peaks.max[i]));
+        const heightPercent = isSilence ? 4 : Math.max(4, Math.min(100, amplitude * 100));
+
+        return (
+          <div
+            key={i}
+            className={`w-[1px] shrink-0 transition-all ${
+              isSilence ? 'bg-red-400/35 h-[2px]' : 'bg-[#2dd4bf] opacity-85'
+            }`}
+            style={{ height: `${heightPercent}%` }}
+          />
+        );
+      })}
+    </div>
+  );
+};
+
+/**
+ * Renders real extracted frames from the clip's source video (count scales
+ * with rendered width, so zooming reveals more frames) instead of a static
+ * filmstrip graphic.
+ */
+const VideoClipFilmstrip: React.FC<{ clip: Clip }> = ({ clip }) => {
+  const [containerRef, width] = useDebouncedWidth();
+  const [frames, setFrames] = useState<string[]>([]);
+  const thumbCount = Math.max(1, Math.min(40, Math.round(width / 48)));
+
+  useEffect(() => {
+    if (!clip.videoUrl || width <= 0) return;
+    let cancelled = false;
+    getVideoThumbnails(clip.videoUrl, clip.sourceStartMs, clip.sourceEndMs, thumbCount)
+      .then((thumbs) => {
+        if (!cancelled) setFrames(thumbs);
+      })
+      .catch(() => {
+        if (!cancelled) setFrames([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clip.videoUrl, clip.sourceStartMs, clip.sourceEndMs, thumbCount]);
+
+  if (!clip.videoUrl) {
+    return (
+      <div ref={containerRef} className="flex-1 min-h-0 flex items-center overflow-hidden">
+        <span className="text-[8px] text-white/30 font-mono uppercase tracking-wider">
+          No preview
+        </span>
+      </div>
+    );
   }
 
   return (
-    <div className="w-full h-8 flex items-end justify-between gap-[1px] px-1 overflow-hidden pointer-events-none">
-      {bars.map((bar) => (
-        <div
-          key={bar.id}
-          className={`w-[1px] shrink-0 transition-all ${
-            bar.isSilence ? 'bg-red-400/35 h-[2px]' : 'bg-[#2dd4bf] opacity-85'
-          }`}
-          style={{ height: `${bar.height}%` }}
-        />
-      ))}
+    <div ref={containerRef} className="flex-1 min-h-0 flex items-stretch gap-[1px] overflow-hidden">
+      {frames.length === 0
+        ? <div className="w-full h-full bg-white/10" />
+        : frames.map((src, i) => (
+            <img
+              key={i}
+              src={src}
+              alt=""
+              draggable={false}
+              className="h-full flex-1 min-w-0 object-cover"
+            />
+          ))}
     </div>
   );
 };

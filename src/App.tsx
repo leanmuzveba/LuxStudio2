@@ -26,6 +26,8 @@ import {
   DEFAULT_CHURCH_BRANDING,
   DEFAULT_CAPTION_STYLES,
 } from './sampleData';
+import { decodeAudioSource, detectSilenceRanges } from './utils/audioAnalysis';
+import { removeRangesFromTracks } from './utils/timelineOps';
 
 export function App() {
   // Navigation View
@@ -48,7 +50,31 @@ export function App() {
     SAMPLE_PROJECT.silenceSegments
   );
   const [isSilenceCut, setIsSilenceCut] = useState<boolean>(false);
+  const [isDetectingSilences, setIsDetectingSilences] = useState<boolean>(false);
   const originalTracksRef = useRef<Track[]>(SAMPLE_PROJECT.tracks);
+
+  // Decode the given source's real audio and replace silenceSegments with
+  // whatever silent stretches actually exist across its full duration.
+  const runSilenceDetection = async (sourceUrl: string) => {
+    setIsDetectingSilences(true);
+    try {
+      const buffer = await decodeAudioSource(sourceUrl);
+      const ranges = detectSilenceRanges(buffer);
+      setSilenceSegments(
+        ranges.map((r, i) => ({
+          id: `sil-${i}-${Math.round(r.startMs)}`,
+          startMs: r.startMs,
+          endMs: r.endMs,
+          durationMs: r.endMs - r.startMs,
+        }))
+      );
+    } catch (e) {
+      console.warn('Silence detection failed:', e);
+      setSilenceSegments([]);
+    } finally {
+      setIsDetectingSilences(false);
+    }
+  };
 
   // Captions & Caption Style (3 Templates)
   const [captions, setCaptions] = useState<CaptionSegment[]>(SAMPLE_PROJECT.captions);
@@ -209,40 +235,13 @@ export function App() {
     setCurrentTimeMs(Math.max(0, Math.min(durationMs, ms)));
   };
 
-  // Auto-Cut Silences Logic
-  const handleAutoCutSilences = async () => {
+  // Auto-Cut Silences Logic — removes every detected silent range from every
+  // track using the same cut points, so video and audio stay in sync.
+  const handleAutoCutSilences = () => {
+    if (silenceSegments.length === 0) return;
     originalTracksRef.current = tracks;
     setIsSilenceCut(true);
-
-    // Build continuous non-silent segments
-    // Silences are removed, adjacent voice clips are joined/merged automatically
-    const cutTracks = tracks.map((track) => {
-      let runningOffset = 0;
-      const cleanClips: Clip[] = [];
-
-      track.clips.forEach((clip, index) => {
-        // Calculate overlap with silence segments
-        let clipStart = clip.startMs;
-        let clipEnd = clip.endMs;
-
-        // Clip duration reduced by silences inside it
-        const duration = Math.max(1000, clipEnd - clipStart - 1800);
-        cleanClips.push({
-          ...clip,
-          id: `${clip.id}-cleaned`,
-          name: `${clip.name} (Paced)`,
-          startMs: runningOffset,
-          endMs: runningOffset + duration,
-        });
-        runningOffset += duration;
-      });
-
-      return {
-        ...track,
-        clips: cleanClips,
-      };
-    });
-
+    const cutTracks = removeRangesFromTracks(tracks, silenceSegments);
     updateTracksWithHistory(cutTracks);
   };
 
@@ -373,12 +372,17 @@ export function App() {
             endMs: newDurationMs,
             sourceStartMs: 0,
             sourceEndMs: newDurationMs,
+            // Same file as the video clip — decodeAudioData only needs the
+            // audio track, so this drives the real waveform + silence detection.
+            audioUrl: url,
           },
         ],
       },
     ];
 
     updateTracksWithHistory(updatedTracks);
+    setIsSilenceCut(false);
+    void runSilenceDetection(url);
   };
 
   // Select a replacement file for a track (Video or Audio), reading its real duration
@@ -410,6 +414,8 @@ export function App() {
         return { ...track, clips: [newClip] };
       });
       updateTracksWithHistory(newTracks);
+      setIsSilenceCut(false);
+      void runSilenceDetection(url);
     };
 
     mediaEl.onloadedmetadata = () => {
@@ -600,6 +606,7 @@ export function App() {
                 onTogglePlay={handleTogglePlay}
                 silenceSegments={silenceSegments}
                 isSilenceCut={isSilenceCut}
+                isDetectingSilences={isDetectingSilences}
                 onAutoCutSilences={handleAutoCutSilences}
                 onRestoreSilences={handleRestoreSilences}
                 captions={captions}
