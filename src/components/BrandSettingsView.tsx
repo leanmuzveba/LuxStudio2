@@ -12,7 +12,7 @@ import {
   Layout,
 } from 'lucide-react';
 import { ChurchBranding } from '../types';
-import { DEFAULT_CHURCH_BRANDING } from '../sampleData';
+import { DEFAULT_CHURCH_BRANDING } from '../defaults';
 import { LuxLogo } from './LuxLogo';
 
 interface BrandSettingsViewProps {

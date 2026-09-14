@@ -43,7 +43,12 @@ export const AIClipsView: React.FC<AIClipsViewProps> = ({
   const [editTitle, setEditTitle] = useState<string>('');
 
   const handleCopyTranscript = async (clip: AIClipCandidate) => {
-    const text = `🔥 "${clip.hook}"\n\n📌 Key Takeaway: ${clip.keyTakeaway}\n\n📍 Higher Life Commission: ${branding.address}\n⏰ ${branding.serviceTimes}\n\n#DivinePurpose #FaithInAction #SundayTeaching #Shorts`;
+    const churchLine = branding.churchName
+      ? `\n\n📍 ${branding.churchName}${branding.address ? `: ${branding.address}` : ''}${
+          branding.serviceTimes ? `\n⏰ ${branding.serviceTimes}` : ''
+        }`
+      : '';
+    const text = `🔥 "${clip.hook}"\n\n📌 Key Takeaway: ${clip.keyTakeaway}${churchLine}\n\n#Shorts`;
     const ok = await copyToClipboard(text);
     if (ok) {
       setCopiedId(clip.id);

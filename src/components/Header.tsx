@@ -20,7 +20,7 @@ interface HeaderProps {
   onAspectRatioChange?: (ratio: any) => void;
   aiClipsCount: number;
   onOpenUpload: () => void;
-  onResetSample: () => void;
+  onClearProject: () => void;
   onExportClick: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
@@ -33,7 +33,7 @@ export const Header: React.FC<HeaderProps> = ({
   onViewChange,
   aiClipsCount,
   onOpenUpload,
-  onResetSample,
+  onClearProject,
   onExportClick,
   canUndo = false,
   canRedo = false,
@@ -87,11 +87,15 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="hidden sm:inline">Upload Video</span>
         </button>
 
-        {/* Reset / Reload Sample */}
+        {/* Clear Project / Start Over */}
         <button
-          id="btn-reset-sample"
-          onClick={onResetSample}
-          title="Reload 1-2hr Teaching Sample"
+          id="btn-clear-project"
+          onClick={() => {
+            if (window.confirm('Clear the project and start with an empty canvas?')) {
+              onClearProject();
+            }
+          }}
+          title="Clear Project (Start Over)"
           className="p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 transition-colors"
         >
           <RotateCcw className="w-3.5 h-3.5" />

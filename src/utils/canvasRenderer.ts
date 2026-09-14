@@ -27,8 +27,7 @@ export function drawVideoFrame({
   if (customVideoElement && customVideoElement.readyState >= 2) {
     ctx.drawImage(customVideoElement, 0, 0, width, height);
   } else {
-    // Generate realistic studio/sanctuary presentation background
-    drawSermonBackground(ctx, width, height, timeMs, aspectRatio);
+    drawEmptyState(ctx, width, height);
   }
 
   // Draw End Card (if within last 6 seconds of a clip or active)
@@ -40,134 +39,33 @@ export function drawVideoFrame({
   }
 }
 
-function drawSermonBackground(
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  timeMs: number,
-  aspectRatio: AspectRatio
-) {
-  // Deep Navy & Charcoal church sanctuary stage gradient
+/** Plain empty canvas shown before any video is loaded — no simulated footage or sample branding. */
+function drawEmptyState(ctx: CanvasRenderingContext2D, w: number, h: number) {
   const grad = ctx.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, '#0a0f1d');
-  grad.addColorStop(0.4, '#14213d');
   grad.addColorStop(1, '#050811');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, w, h);
 
-  // Soft stage spotlight ambiance (warm gold #FCA311 glow)
-  const pulse = Math.sin(timeMs / 1200) * 0.05;
-  const spotGrad = ctx.createRadialGradient(
-    w * 0.5,
-    h * 0.38,
-    20,
-    w * 0.5,
-    h * 0.42,
-    w * 0.65
-  );
-  spotGrad.addColorStop(0, `rgba(252, 163, 17, ${0.28 + pulse})`);
-  spotGrad.addColorStop(0.5, 'rgba(20, 33, 61, 0.4)');
-  spotGrad.addColorStop(1, 'transparent');
-  ctx.fillStyle = spotGrad;
-  ctx.fillRect(0, 0, w, h);
-
-  // Stylized Sermon Stage Background Graphic Elements
   ctx.save();
-  ctx.strokeStyle = 'rgba(252, 163, 17, 0.12)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
   ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(w * 0.5, h * 0.4, w * 0.35, 0, Math.PI * 2);
+  const iconSize = Math.min(w, h) * 0.12;
+  roundRect(ctx, w * 0.5 - iconSize / 2, h * 0.5 - iconSize / 2, iconSize, iconSize, 8);
   ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(w * 0.5 - iconSize * 0.15, h * 0.5 - iconSize * 0.2);
+  ctx.lineTo(w * 0.5 + iconSize * 0.22, h * 0.5);
+  ctx.lineTo(w * 0.5 - iconSize * 0.15, h * 0.5 + iconSize * 0.2);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+  ctx.fill();
   ctx.restore();
 
-  // Speaker silhouette / podium illustration representation
-  const speakerX = w * 0.5;
-  const speakerY = h * 0.56;
-
-  // Subtle speaker movement animation
-  const sway = Math.sin(timeMs / 600) * 3;
-  const breathe = Math.cos(timeMs / 800) * 2;
-
-  // Speaker head and body silhouette
-  ctx.save();
-  ctx.fillStyle = '#080d1a';
-  // Head
-  ctx.beginPath();
-  ctx.arc(speakerX + sway, speakerY - 90 + breathe, 40, 0, Math.PI * 2);
-  ctx.fill();
-
-  const isVertical = w < h || aspectRatio === '9:16' || aspectRatio === '3:4';
-
-  // Shoulders & torso
-  ctx.beginPath();
-  ctx.ellipse(
-    speakerX + sway,
-    speakerY + 20 + breathe,
-    isVertical ? 95 : 120,
-    110,
-    0,
-    0,
-    Math.PI * 2
-  );
-  ctx.fill();
-
-  // Accent rim lighting on speaker (Gold #FCA311 highlight)
-  ctx.strokeStyle = '#FCA311';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(speakerX + sway - 15, speakerY - 95 + breathe, 28, Math.PI * 0.9, Math.PI * 1.6);
-  ctx.stroke();
-
-  // Lectern / pulpit with church emblem
-  const pulpitW = isVertical ? 160 : 200;
-  const pulpitH = h * 0.35;
-  const pulpitX = w * 0.5 - pulpitW / 2;
-  const pulpitY = h * 0.65;
-
-  const pulpitGrad = ctx.createLinearGradient(pulpitX, pulpitY, pulpitX, pulpitY + pulpitH);
-  pulpitGrad.addColorStop(0, '#101a2e');
-  pulpitGrad.addColorStop(1, '#050811');
-  ctx.fillStyle = pulpitGrad;
-
-  // Rounded top pulpit
-  roundRect(ctx, pulpitX, pulpitY, pulpitW, pulpitH, 12);
-  ctx.fill();
-
-  // Pulpit gold edge
-  ctx.strokeStyle = 'rgba(252, 163, 17, 0.4)';
-  ctx.lineWidth = 2;
-  roundRect(ctx, pulpitX, pulpitY, pulpitW, pulpitH, 12);
-  ctx.stroke();
-
-  // Mini church cross / logo on pulpit
-  ctx.fillStyle = '#FCA311';
-  ctx.fillRect(w * 0.5 - 2, pulpitY + 22, 4, 24);
-  ctx.fillRect(w * 0.5 - 10, pulpitY + 28, 20, 4);
-
-  // "HIGHER LIFE" text on pulpit
-  ctx.fillStyle = '#E5E5E5';
-  ctx.font = '700 11px "Space Grotesk", sans-serif';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+  ctx.font = '600 13px "Plus Jakarta Sans", sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('HIGHER LIFE COMMISSION', w * 0.5, pulpitY + 62);
-  ctx.restore();
-
-  // Audio level meters on top right
-  drawAudioMeter(ctx, w - 80, 24, timeMs);
-}
-
-function drawAudioMeter(ctx: CanvasRenderingContext2D, x: number, y: number, timeMs: number) {
-  ctx.save();
-  const barCount = 6;
-  const barW = 4;
-  const maxH = 20;
-
-  for (let i = 0; i < barCount; i++) {
-    const rawLevel = Math.sin(timeMs / 180 + i * 1.5) * 0.5 + 0.5;
-    const h = Math.max(4, rawLevel * maxH);
-    ctx.fillStyle = i >= 4 ? '#ef4444' : i >= 3 ? '#FCA311' : '#22c55e';
-    ctx.fillRect(x + i * 7, y + maxH - h, barW, h);
-  }
-  ctx.restore();
+  ctx.fillText('Upload a video to begin', w * 0.5, h * 0.5 + iconSize * 0.9);
 }
 
 function drawCaptionOverlay(

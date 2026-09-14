@@ -20,14 +20,19 @@ import {
   ChurchBranding,
   AspectRatio,
 } from './types';
-import {
-  SAMPLE_PROJECT,
-  SAMPLE_TEACHING_SUMMARY,
-  DEFAULT_CHURCH_BRANDING,
-  DEFAULT_CAPTION_STYLES,
-} from './sampleData';
+import { DEFAULT_CHURCH_BRANDING, DEFAULT_CAPTION_STYLES } from './defaults';
 import { decodeAudioSource, detectSilenceRanges } from './utils/audioAnalysis';
 import { removeRangesFromTracks } from './utils/timelineOps';
+
+// The empty project a fresh session (or "Clear Project") starts from — real
+// track slots so per-track upload/mute controls work, but no clips, captions,
+// or AI content until the user actually adds something.
+const EMPTY_TRACKS: Track[] = [
+  { id: 'track-video', type: 'video', name: 'Video Track 1', muted: false, orderIndex: 0, clips: [] },
+  { id: 'track-audio', type: 'audio', name: 'Vocal Audio Track', muted: false, orderIndex: 1, clips: [] },
+];
+
+const EMPTY_TEACHING_SUMMARY: TeachingSummary = { title: '', summary: '', hashtags: [] };
 
 export function App() {
   // Navigation View
@@ -35,23 +40,21 @@ export function App() {
 
   // Timeline & Playback State
   const [currentTimeMs, setCurrentTimeMs] = useState<number>(0);
-  const [durationMs, setDurationMs] = useState<number>(SAMPLE_PROJECT.durationMs);
+  const [durationMs, setDurationMs] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16');
   const [autoMergeEnabled, setAutoMergeEnabled] = useState<boolean>(true);
 
   // Tracks and Undo/Redo history
-  const [tracks, setTracks] = useState<Track[]>(SAMPLE_PROJECT.tracks);
+  const [tracks, setTracks] = useState<Track[]>(EMPTY_TRACKS);
   const [historyPast, setHistoryPast] = useState<Track[][]>([]);
   const [historyFuture, setHistoryFuture] = useState<Track[][]>([]);
 
   // Silence Segments & Auto-Cut State
-  const [silenceSegments, setSilenceSegments] = useState<SilenceSegment[]>(
-    SAMPLE_PROJECT.silenceSegments
-  );
+  const [silenceSegments, setSilenceSegments] = useState<SilenceSegment[]>([]);
   const [isSilenceCut, setIsSilenceCut] = useState<boolean>(false);
   const [isDetectingSilences, setIsDetectingSilences] = useState<boolean>(false);
-  const originalTracksRef = useRef<Track[]>(SAMPLE_PROJECT.tracks);
+  const originalTracksRef = useRef<Track[]>(EMPTY_TRACKS);
 
   // Decode the given source's real audio and replace silenceSegments with
   // whatever silent stretches actually exist across its full duration.
@@ -77,17 +80,15 @@ export function App() {
   };
 
   // Captions & Caption Style (3 Templates)
-  const [captions, setCaptions] = useState<CaptionSegment[]>(SAMPLE_PROJECT.captions);
+  const [captions, setCaptions] = useState<CaptionSegment[]>([]);
   const [captionStyle, setCaptionStyle] = useState<CaptionStyle>(
     DEFAULT_CAPTION_STYLES['bold-impact']
   );
 
   // AI Generated Clips & Teaching Summary
-  const [aiClipCandidates, setAiClipCandidates] = useState<AIClipCandidate[]>(
-    SAMPLE_PROJECT.aiClipCandidates
-  );
+  const [aiClipCandidates, setAiClipCandidates] = useState<AIClipCandidate[]>([]);
   const [teachingSummary, setTeachingSummary] = useState<TeachingSummary>(
-    SAMPLE_TEACHING_SUMMARY
+    EMPTY_TEACHING_SUMMARY
   );
 
   // Church Branding State
@@ -252,14 +253,12 @@ export function App() {
 
   // Auto-Generate / Transcribe Captions
   const handleAutoGenerateCaptions = async () => {
+    if (tracks.every((t) => t.clips.length === 0)) return;
     setIsTranscribing(true);
     try {
-      // Simulate transcription with server call or fallback
-      await new Promise((r) => setTimeout(r, 1200));
-      // Re-align sample captions to active timeline
-      setCaptions(SAMPLE_PROJECT.captions);
-    } catch (e) {
-      console.error(e);
+      // No speech-to-text backend is wired up yet, so there is nothing real
+      // to transcribe — deliberately not fabricating caption text here.
+      console.warn('Auto-transcription has no speech-to-text backend configured yet.');
     } finally {
       setIsTranscribing(false);
     }
@@ -274,13 +273,15 @@ export function App() {
 
   // AI Generate More Clips (calling Gemini backend)
   const handleGenerateMoreAIClips = async () => {
+    const transcript = captions.map((c) => c.text).join(' ');
+    if (!transcript.trim()) return;
     setIsGeneratingClips(true);
     try {
       const response = await fetch('/api/gemini/clips', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          transcript: SAMPLE_PROJECT.transcriptText,
+          transcript,
           durationMs,
         }),
       });
@@ -300,13 +301,15 @@ export function App() {
 
   // AI Regenerate Teaching Summary
   const handleRegenerateSummary = async () => {
+    const transcript = captions.map((c) => c.text).join(' ');
+    if (!transcript.trim()) return;
     setIsRegeneratingSummary(true);
     try {
       const response = await fetch('/api/gemini/summarize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          transcript: SAMPLE_PROJECT.transcriptText,
+          transcript,
           churchName: branding.churchName,
         }),
       });
@@ -427,15 +430,23 @@ export function App() {
     mediaEl.src = url;
   };
 
-  // Load Preset Sermon handler
-  const handleLoadPreset = (presetType: '1hr' | '2hr') => {
-    const dur = presetType === '1hr' ? 3600000 : 7200000;
-    setDurationMs(SAMPLE_PROJECT.durationMs);
+  // Clears the whole project back to an empty canvas (no video, captions, or AI content)
+  const handleClearProject = () => {
+    if (customVideoUrl) URL.revokeObjectURL(customVideoUrl);
+    setCustomVideoUrl(null);
+    setDurationMs(0);
     setCurrentTimeMs(0);
-    setTracks(SAMPLE_PROJECT.tracks);
-    setCaptions(SAMPLE_PROJECT.captions);
-    setSilenceSegments(SAMPLE_PROJECT.silenceSegments);
+    setIsPlaying(false);
+    setTracks(EMPTY_TRACKS);
+    originalTracksRef.current = EMPTY_TRACKS;
+    setCaptions([]);
+    setSilenceSegments([]);
     setIsSilenceCut(false);
+    setAiClipCandidates([]);
+    setTeachingSummary(EMPTY_TEACHING_SUMMARY);
+    setBranding(DEFAULT_CHURCH_BRANDING);
+    setHistoryPast([]);
+    setHistoryFuture([]);
   };
 
   return (
@@ -448,7 +459,7 @@ export function App() {
         onAspectRatioChange={setAspectRatio}
         aiClipsCount={aiClipCandidates.length}
         onOpenUpload={() => setIsUploadOpen(true)}
-        onResetSample={() => handleLoadPreset('1hr')}
+        onClearProject={handleClearProject}
         onExportClick={() => setIsExportOpen(true)}
         canUndo={historyPast.length > 0}
         canRedo={historyFuture.length > 0}

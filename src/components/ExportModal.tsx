@@ -63,7 +63,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       { p: 15, text: 'Extracting clean audio & vocal waveform...' },
       { p: 35, text: `Applying ${captionStyle.templateType} caption burn-in...` },
       { p: 58, text: `Encoding ${settings.aspectRatio} 1080x1920 video frames...` },
-      { p: 82, text: 'Embedding Higher Life church lower-thirds & outro...' },
+      {
+        p: 82,
+        text: branding.churchName
+          ? `Embedding ${branding.churchName} lower-thirds & outro...`
+          : 'Embedding lower-thirds & outro...',
+      },
       { p: 95, text: 'Finalizing H.264 MP4 container & AAC audio...' },
       { p: 100, text: 'Rendering complete!' },
     ];

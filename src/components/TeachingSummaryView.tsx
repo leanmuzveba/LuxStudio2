@@ -244,11 +244,15 @@ export const TeachingSummaryView: React.FC<TeachingSummaryViewProps> = ({
                 {/* Church Profile Header */}
                 <div className="flex items-center gap-2.5 pb-2 border-b border-white/5">
                   <div className="w-8 h-8 bg-[#14213D] border border-[#FCA311] flex items-center justify-center text-[10px] font-black text-[#FCA311]">
-                    HLC
+                    {getChurchInitials(branding.churchName)}
                   </div>
                   <div>
-                    <div className="font-bold text-white text-xs">Higher Life Commission</div>
-                    <div className="text-[10px] text-gray-400">Johannesburg, South Africa</div>
+                    <div className="font-bold text-white text-xs">
+                      {branding.churchName || 'Your Church'}
+                    </div>
+                    {branding.address && (
+                      <div className="text-[10px] text-gray-400">{branding.address}</div>
+                    )}
                   </div>
                 </div>
 
@@ -295,3 +299,13 @@ export const TeachingSummaryView: React.FC<TeachingSummaryViewProps> = ({
     </div>
   );
 };
+
+function getChurchInitials(churchName: string): string {
+  const initials = churchName
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word[0])
+    .join('')
+    .toUpperCase();
+  return initials.slice(0, 3) || '—';
+}
