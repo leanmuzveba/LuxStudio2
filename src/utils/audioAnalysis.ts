@@ -21,38 +21,30 @@ function getAudioContext(): AudioContext {
 }
 
 /**
- * Fast path: decode the whole file directly via decodeAudioData. This works
- * for plain audio files, but browsers frequently CANNOT decode audio out of
- * a video container this way (decodeAudioData expects an audio file, not a
- * muxed container) even though the same file plays fine in a <video>/<audio>
- * element — that mismatch is why "no audio detected" can happen on a video
- * that clearly has audio. Callers should fall back to analyzeAudioViaPlayback.
+ * Loads the file into a real <video> element (works for plain audio files
+ * too) and taps its actual decoded audio via Web Audio as it plays — the
+ * same decoding pipeline the visible player already uses successfully, so
+ * there's no separate "extraction" step or container-format guessing.
+ *
+ * The element is intentionally NOT muted: muting a media element also zeroes
+ * the PCM that reaches a MediaElementAudioSourceNode in some browsers (not
+ * just its own speaker output), which produces silent captured audio even
+ * though the file audibly has sound. Instead, output is silenced by routing
+ * through a zero-gain node before the destination.
+ *
+ * Plays at normal (1x) speed so there's no time-compression math to get
+ * wrong — it just takes as long as the file's real duration, with progress
+ * (0..1) reported via onProgress as it goes.
  */
-function decodeAudioSource(url: string): Promise<AudioBuffer> {
-  return fetch(url)
-    .then((res) => res.arrayBuffer())
-    .then((arrayBuffer) => getAudioContext().decodeAudioData(arrayBuffer));
-}
-
-/**
- * Fallback path: plays the file through a hidden, silenced <video> element
- * and taps the real decoded PCM as it plays via Web Audio — the same
- * decoding pipeline the visible player already uses successfully, so it
- * works even when decodeAudioData can't parse the container directly.
- * Reports playback progress (0..1) via onProgress as it goes, since this can
- * take real time proportional to the file's duration.
- */
-function analyzeAudioViaPlayback(
+function captureAudioViaPlayback(
   url: string,
   onProgress?: (ratio: number) => void
 ): Promise<DecodedAudioLike> {
   return new Promise((resolve, reject) => {
     const captureSampleRate = 4000; // plenty for waveform display + silence detection, keeps memory small
-    const playbackRate = 8; // speeds up analysis; audio energy levels stay meaningful even sped up
 
     const video = document.createElement('video');
     video.src = url;
-    video.muted = true;
     video.preload = 'auto';
     video.playsInline = true;
 
@@ -68,7 +60,6 @@ function analyzeAudioViaPlayback(
     const cleanup = () => {
       try { processor?.disconnect(); } catch {}
       try { source?.disconnect(); } catch {}
-      try { ctx?.close(); } catch {}
       video.pause();
       video.removeAttribute('src');
       video.load();
@@ -145,7 +136,6 @@ function analyzeAudioViaPlayback(
         return;
       }
 
-      video.playbackRate = playbackRate;
       video.addEventListener('ended', finish);
       video.play().catch(fail);
     });
@@ -160,13 +150,10 @@ function broadcastProgress(url: string, ratio: number) {
 }
 
 /**
- * Returns the decoded audio for a URL, decoding it once and caching the
- * result for every caller (waveform rendering, silence detection, etc.).
- * Tries the fast direct decode first, then transparently falls back to
- * playback-based capture if that fails — e.g. for a video container
- * decodeAudioData can't parse directly. If a decode for this URL is already
- * in flight, onProgress is ignored (only the call that started it drives
- * progress) and the same promise is returned.
+ * Returns the decoded audio for a URL, capturing it once and caching the
+ * result for every caller (waveform rendering, silence detection, etc.). If
+ * a decode for this URL is already in flight, onProgress is ignored (only
+ * the call that started it drives progress) and the same promise is reused.
  */
 export function getDecodedAudio(
   url: string,
@@ -180,9 +167,7 @@ export function getDecodedAudio(
     progressListeners.get(url)!.add(onProgress);
   }
 
-  const promise = decodeAudioSource(url).catch(() =>
-    analyzeAudioViaPlayback(url, (ratio) => broadcastProgress(url, ratio))
-  );
+  const promise = captureAudioViaPlayback(url, (ratio) => broadcastProgress(url, ratio));
 
   decodeCache.set(url, promise);
   promise
