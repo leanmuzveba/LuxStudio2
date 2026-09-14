@@ -21,7 +21,7 @@ import {
   AspectRatio,
 } from './types';
 import { DEFAULT_CHURCH_BRANDING, DEFAULT_CAPTION_STYLES } from './defaults';
-import { decodeAudioSource, detectSilenceRanges } from './utils/audioAnalysis';
+import { getDecodedAudio, detectSilenceRanges } from './utils/audioAnalysis';
 import { removeRangesFromTracks } from './utils/timelineOps';
 
 // The empty project a fresh session (or "Clear Project") starts from — real
@@ -54,14 +54,20 @@ export function App() {
   const [silenceSegments, setSilenceSegments] = useState<SilenceSegment[]>([]);
   const [isSilenceCut, setIsSilenceCut] = useState<boolean>(false);
   const [isDetectingSilences, setIsDetectingSilences] = useState<boolean>(false);
+  const [silenceDetectionProgress, setSilenceDetectionProgress] = useState<number>(0);
   const originalTracksRef = useRef<Track[]>(EMPTY_TRACKS);
 
   // Decode the given source's real audio and replace silenceSegments with
   // whatever silent stretches actually exist across its full duration.
+  // getDecodedAudio tries a fast direct decode first, then transparently
+  // falls back to playing the file through and capturing real samples if
+  // the container can't be decoded directly (reported via progress, since
+  // that fallback takes real time proportional to the file's duration).
   const runSilenceDetection = async (sourceUrl: string) => {
     setIsDetectingSilences(true);
+    setSilenceDetectionProgress(0);
     try {
-      const buffer = await decodeAudioSource(sourceUrl);
+      const buffer = await getDecodedAudio(sourceUrl, setSilenceDetectionProgress);
       const ranges = detectSilenceRanges(buffer);
       setSilenceSegments(
         ranges.map((r, i) => ({
@@ -76,6 +82,7 @@ export function App() {
       setSilenceSegments([]);
     } finally {
       setIsDetectingSilences(false);
+      setSilenceDetectionProgress(0);
     }
   };
 
@@ -618,6 +625,7 @@ export function App() {
                 silenceSegments={silenceSegments}
                 isSilenceCut={isSilenceCut}
                 isDetectingSilences={isDetectingSilences}
+                silenceDetectionProgress={silenceDetectionProgress}
                 onAutoCutSilences={handleAutoCutSilences}
                 onRestoreSilences={handleRestoreSilences}
                 captions={captions}

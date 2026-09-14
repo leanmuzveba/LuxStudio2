@@ -24,7 +24,7 @@ import {
 import { Track, Clip, SilenceSegment, CaptionSegment } from '../types';
 import { formatTimecode } from '../utils/formatters';
 import { splitTracksAtTime } from '../utils/timelineOps';
-import { decodeAudioSource, computeWaveformPeaks } from '../utils/audioAnalysis';
+import { getDecodedAudio, computeWaveformPeaks } from '../utils/audioAnalysis';
 import { getVideoThumbnails } from '../utils/videoThumbnails';
 
 type ToolMode = 'select' | 'split';
@@ -40,6 +40,7 @@ interface TimelineEditorProps {
   silenceSegments: SilenceSegment[];
   isSilenceCut: boolean;
   isDetectingSilences?: boolean;
+  silenceDetectionProgress?: number;
   onAutoCutSilences: () => void;
   onRestoreSilences: () => void;
   captions: CaptionSegment[];
@@ -60,6 +61,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   silenceSegments,
   isSilenceCut,
   isDetectingSilences = false,
+  silenceDetectionProgress = 0,
   onAutoCutSilences,
   onRestoreSilences,
   captions,
@@ -395,12 +397,18 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
               id="btn-auto-cut-silence"
               onClick={onAutoCutSilences}
               disabled={isDetectingSilences || silenceSegments.length === 0}
-              className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-[#FCA311] to-[#f78e05] text-black font-bold shadow-md shadow-[#FCA311]/20 hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:pointer-events-none"
+              className="relative flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-[#FCA311] to-[#f78e05] text-black font-bold shadow-md shadow-[#FCA311]/20 hover:brightness-110 active:scale-95 transition-all disabled:opacity-90 disabled:pointer-events-none overflow-hidden"
             >
-              <Wand2 className="w-3.5 h-3.5" />
-              <span>
+              {isDetectingSilences && (
+                <span
+                  className="absolute inset-y-0 left-0 bg-black/15 transition-[width]"
+                  style={{ width: `${Math.round(silenceDetectionProgress * 100)}%` }}
+                />
+              )}
+              <Wand2 className="relative w-3.5 h-3.5" />
+              <span className="relative">
                 {isDetectingSilences
-                  ? 'Detecting silences…'
+                  ? `Detecting silences… ${Math.round(silenceDetectionProgress * 100)}%`
                   : `Auto Cut Silences (${silenceSegments.length} detected)`}
               </span>
             </button>
@@ -847,7 +855,7 @@ const ThinAudioWaveform: React.FC<{
     let cancelled = false;
     const bucketCount = Math.max(20, Math.min(2000, width));
 
-    decodeAudioSource(sourceUrl)
+    getDecodedAudio(sourceUrl)
       .then((buffer) => {
         if (cancelled) return;
         setPeaks(
