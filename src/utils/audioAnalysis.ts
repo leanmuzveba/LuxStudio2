@@ -52,6 +52,11 @@ function captureAudioViaPlayback(
     // volume-0 playback the same as muted for the autoplay-without-a-fresh-
     // user-gesture allowance.
     video.volume = 0;
+    // Some browsers throttle/suspend media elements that are never attached
+    // to the document, especially over a long real-duration playback — keep
+    // it in the DOM (invisible) rather than detached.
+    video.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px;';
+    document.body.appendChild(video);
 
     let ctx: AudioContext | null = null;
     let source: MediaElementAudioSourceNode | null = null;
@@ -61,19 +66,22 @@ function captureAudioViaPlayback(
     let outBuffer = new Float32Array(0);
     let writeIndex = 0;
     let settled = false;
+    let watchdog: number | undefined;
 
     const cleanup = () => {
+      window.clearTimeout(watchdog);
       try { processor?.disconnect(); } catch {}
       try { source?.disconnect(); } catch {}
       video.pause();
       video.removeAttribute('src');
       video.load();
+      video.remove();
     };
 
     const fail = (err: unknown) => {
       if (settled) return;
       settled = true;
-      console.warn('[audioAnalysis] capture failed:', err);
+      console.warn('[audioAnalysis] capture failed for', url, ':', err);
       cleanup();
       reject(err instanceof Error ? err : new Error(String(err)));
     };
@@ -82,6 +90,7 @@ function captureAudioViaPlayback(
       if (settled) return;
       settled = true;
       const finalData = outBuffer.slice(0, writeIndex);
+      console.log(`[audioAnalysis] capture finished for ${url}: ${finalData.length} samples`);
       cleanup();
       onProgress?.(1);
       resolve({
@@ -104,8 +113,21 @@ function captureAudioViaPlayback(
     );
 
     video.addEventListener('loadedmetadata', () => {
-      const durationSec = video.duration || 0;
-      outBuffer = new Float32Array(Math.max(1, Math.ceil(durationSec * captureSampleRate)));
+      // duration can be Infinity/NaN for some recorded/exported files until
+      // played through — guard against that instead of allocating a bogus
+      // (or infinite) buffer size.
+      const rawDuration = video.duration;
+      const durationSec = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 0;
+      console.log(`[audioAnalysis] loaded metadata for ${url}: duration=${durationSec || 'unknown'}`);
+      outBuffer = new Float32Array(durationSec > 0 ? Math.max(1, Math.ceil(durationSec * captureSampleRate)) : 1024);
+
+      // Guards against a silent infinite hang (e.g. playback stalls without
+      // ever firing an error) — fail loudly instead of leaving the caller
+      // waiting forever with no feedback.
+      watchdog = window.setTimeout(
+        () => fail(new Error(`Audio capture timed out (stuck at ${(video.currentTime || 0).toFixed(1)}s of ${durationSec.toFixed(1)}s)`)),
+        Math.max(30000, durationSec * 1500)
+      );
 
       try {
         ctx = getAudioContext();
@@ -145,7 +167,10 @@ function captureAudioViaPlayback(
       }
 
       video.addEventListener('ended', finish);
-      video.play().catch(fail);
+      video
+        .play()
+        .then(() => console.log(`[audioAnalysis] playback started for ${url}`))
+        .catch(fail);
     });
   });
 }
