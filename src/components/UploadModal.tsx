@@ -56,31 +56,38 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     setIsProcessing(true);
     setUploadProgress(0);
 
-    // Simulate upload & metadata extraction
+    // Plain local counter (not a setState updater) so the completion side
+    // effects below run exactly once — a setState updater containing side
+    // effects gets invoked twice under React StrictMode in development,
+    // which was silently triggering onUploadSuccess (and a full audio
+    // capture) twice per upload.
+    let progress = 0;
     const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsProcessing(false);
-          // Try to get actual video duration
-          const video = document.createElement('video');
-          video.preload = 'metadata';
-          video.onloadedmetadata = () => {
-            window.URL.revokeObjectURL(video.src);
-            const durationMs = Math.round((video.duration || 98) * 1000);
-            onUploadSuccess(file, durationMs);
-            onClose();
-          };
-          video.onerror = () => {
-            // fallback
-            onUploadSuccess(file, 120000);
-            onClose();
-          };
-          video.src = URL.createObjectURL(file);
-          return 100;
-        }
-        return prev + 25;
-      });
+      progress += 25;
+      if (progress < 100) {
+        setUploadProgress(progress);
+        return;
+      }
+
+      clearInterval(interval);
+      setUploadProgress(100);
+      setIsProcessing(false);
+
+      // Try to get actual video duration
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.onloadedmetadata = () => {
+        window.URL.revokeObjectURL(video.src);
+        const durationMs = Math.round((video.duration || 98) * 1000);
+        onUploadSuccess(file, durationMs);
+        onClose();
+      };
+      video.onerror = () => {
+        // fallback
+        onUploadSuccess(file, 120000);
+        onClose();
+      };
+      video.src = URL.createObjectURL(file);
     }, 200);
   };
 

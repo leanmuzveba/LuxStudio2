@@ -42,6 +42,15 @@ function captureAudioViaPlayback(
 ): Promise<DecodedAudioLike> {
   return new Promise((resolve, reject) => {
     const captureSampleRate = 4000; // plenty for waveform display + silence detection, keeps memory small
+    // Speeds up long files (this app's target is 1-2hr sermons — at 1x that's
+    // a 1-2hr wait). Web Audio always delivers ctx.sampleRate samples per
+    // WALL-CLOCK second regardless of playbackRate; at playbackRate=R, each
+    // wall-clock second covers R seconds of ORIGINAL content, so the stream
+    // effectively represents (ctx.sampleRate / R) content-samples/sec. The
+    // decimateStep below divides by R again to compensate, so the resolved
+    // buffer's declared sampleRate (captureSampleRate) stays correct — this
+    // is the piece that was wrong in an earlier version of this function.
+    const playbackRate = 8;
 
     const video = document.createElement('video');
     video.src = url;
@@ -126,12 +135,12 @@ function captureAudioViaPlayback(
       // waiting forever with no feedback.
       watchdog = window.setTimeout(
         () => fail(new Error(`Audio capture timed out (stuck at ${(video.currentTime || 0).toFixed(1)}s of ${durationSec.toFixed(1)}s)`)),
-        Math.max(30000, durationSec * 1500)
+        Math.max(30000, (durationSec / playbackRate) * 3000)
       );
 
       try {
         ctx = getAudioContext();
-        const decimateStep = Math.max(1, Math.round(ctx.sampleRate / captureSampleRate));
+        const decimateStep = Math.max(1, Math.round(ctx.sampleRate / (playbackRate * captureSampleRate)));
         source = ctx.createMediaElementSource(video);
         processor = ctx.createScriptProcessor(4096, 1, 1);
 
@@ -167,9 +176,10 @@ function captureAudioViaPlayback(
       }
 
       video.addEventListener('ended', finish);
+      video.playbackRate = playbackRate;
       video
         .play()
-        .then(() => console.log(`[audioAnalysis] playback started for ${url}`))
+        .then(() => console.log(`[audioAnalysis] playback started for ${url} at ${playbackRate}x`))
         .catch(fail);
     });
   });
