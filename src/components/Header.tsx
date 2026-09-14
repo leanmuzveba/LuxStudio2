@@ -5,8 +5,11 @@ import {
   RotateCcw,
   Undo2,
   Redo2,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { LuxLogo } from './LuxLogo';
+import { useTheme } from '../contexts/ThemeContext';
 
 export type AppView = 'editor' | 'clips' | 'summary' | 'brand' | 'export';
 
@@ -37,13 +40,13 @@ export const Header: React.FC<HeaderProps> = ({
   onUndo,
   onRedo,
 }) => {
+  const { theme, toggleTheme } = useTheme();
+
   return (
     <header
       id="app-header"
       className="h-14 px-4 shrink-0 flex items-center justify-between z-30 border-b border-[#14213D]/80 select-none"
-      style={{
-        background: 'linear-gradient(90deg, #090e1a 0%, #0d1527 50%, #090e1a 100%)',
-      }}
+      style={{ background: 'var(--header-gradient)' }}
     >
       {/* Left: Brand & Logo + Undo/Redo */}
       <div className="flex items-center gap-4">
@@ -92,6 +95,17 @@ export const Header: React.FC<HeaderProps> = ({
           className="p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 transition-colors"
         >
           <RotateCcw className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Theme Toggle */}
+        <button
+          id="btn-toggle-theme"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          aria-label="Toggle color theme"
+          className="p-2 text-gray-400 hover:text-[#FCA311] bg-white/5 hover:bg-white/10 border border-white/5 transition-colors"
+        >
+          {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
         </button>
 
         {/* Export Button */}

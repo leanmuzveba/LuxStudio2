@@ -3,3 +3,168 @@
 *, *::before, *::after {
   border-radius: 0 !important;
 }
+
+/* ==========================================================================
+   Theme tokens
+   Dark (default) matches the original navy/gold look. Light is a grey app
+   shell with blue accents/buttons, toggled via [data-theme="light"] on <html>.
+   ========================================================================== */
+:root {
+  --bg-root: #070c17;
+  --bg-panel: #0b1222;
+  --bg-input: #101b38;
+  --border: #14213d;
+  --border-2: #1a2b54;
+  --surface-active: #142347;
+  --surface-hover: #14213d;
+  --overlay-soft: rgba(255, 255, 255, 0.05);
+  --overlay-medium: rgba(255, 255, 255, 0.1);
+  --accent: #fca311;
+  --accent-hover: #e2930f;
+  --accent-soft: #f59e0b;
+  --accent-2: #00e5ff;
+  --accent-3: #2dd4bf;
+  --text-primary: #ffffff;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --header-gradient: linear-gradient(90deg, #090e1a 0%, #0d1527 50%, #090e1a 100%);
+}
+
+[data-theme="light"] {
+  --bg-root: #e8eaed;
+  --bg-panel: #f4f5f7;
+  --bg-input: #eef0f3;
+  --border: #d7dae0;
+  --border-2: #c7ccd6;
+  --surface-active: #dbe6fb;
+  --surface-hover: #e2e8f2;
+  --overlay-soft: rgba(15, 23, 42, 0.05);
+  --overlay-medium: rgba(15, 23, 42, 0.09);
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-soft: #3b82f6;
+  --accent-2: #2563eb;
+  --accent-3: #0ea5e9;
+  --text-primary: #111318;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+  --header-gradient: linear-gradient(90deg, #f4f5f7 0%, #ffffff 50%, #f4f5f7 100%);
+}
+
+/* ==========================================================================
+   Light-theme overrides for the app's hardcoded Tailwind arbitrary-value
+   utilities. Targets the class ATTRIBUTE by substring so every opacity
+   variant (e.g. bg-[#FCA311]/20) is covered by one rule. Unlayered rules
+   beat Tailwind's @layer utilities regardless of specificity, so these
+   apply without needing to touch each component file directly.
+   ========================================================================== */
+[data-theme="light"] [class*="bg-[#070c17]"],
+[data-theme="light"] [class*="bg-[#060a14]"],
+[data-theme="light"] [class*="bg-[#050811]"],
+[data-theme="light"] [class*="bg-[#070d1a]"],
+[data-theme="light"] [class*="bg-[#060a13]"],
+[data-theme="light"] [class*="bg-[#05111a]"] { background-color: var(--bg-root) !important; }
+
+[data-theme="light"] [class*="bg-[#0b1222]"],
+[data-theme="light"] [class*="bg-[#0a1224]"],
+[data-theme="light"] [class*="bg-[#0c1630]"],
+[data-theme="light"] [class*="bg-[#0a1020]"],
+[data-theme="light"] [class*="bg-[#070b16]"],
+[data-theme="light"] [class*="bg-[#0d162b]"],
+[data-theme="light"] [class*="bg-[#091024]"],
+[data-theme="light"] [class*="bg-[#090f1d]"],
+[data-theme="light"] [class*="bg-[#080d1a]"],
+[data-theme="light"] [class*="bg-[#080d19]"],
+[data-theme="light"] [class*="bg-[#0e172a]"],
+[data-theme="light"] [class*="bg-[#0c1426]"],
+[data-theme="light"] [class*="from-[#0c1426]"],
+[data-theme="light"] [class*="to-[#0c1426]"] { background-color: var(--bg-panel) !important; }
+
+[data-theme="light"] [class*="bg-[#101b38]"],
+[data-theme="light"] [class*="bg-[#0e1730]"],
+[data-theme="light"] [class*="bg-[#0e162b]"],
+[data-theme="light"] [class*="bg-[#082b33]"],
+[data-theme="light"] [class*="via-[#101b33]"] { background-color: var(--bg-input) !important; }
+
+[data-theme="light"] [class*="border-[#14213d]" i],
+[data-theme="light"] [class*="divide-[#14213d]" i] { border-color: var(--border) !important; }
+
+[data-theme="light"] [class*="border-[#1a2b54]"] { border-color: var(--border-2) !important; }
+
+[data-theme="light"] [class*="bg-[#142347]"],
+[data-theme="light"] [class*="hover:bg-[#142347]"]:hover { background-color: var(--surface-active) !important; }
+[data-theme="light"] [class*="hover:bg-[#14213d]" i]:hover,
+[data-theme="light"] [class*="hover:bg-[#1f335e]"]:hover,
+[data-theme="light"] [class*="hover:bg-[#1e325c]"]:hover,
+[data-theme="light"] [class*="hover:bg-[#101b38]"]:hover,
+[data-theme="light"] [class*="hover:bg-[#0e172e]"]:hover { background-color: var(--surface-hover) !important; }
+
+/* Primary accent (gold -> blue) */
+[data-theme="light"] [class*="bg-[#FCA311]" i] { background-color: var(--accent) !important; }
+[data-theme="light"] [class*="text-[#FCA311]" i] { color: var(--accent) !important; }
+[data-theme="light"] [class*="border-[#FCA311]" i] { border-color: var(--accent) !important; }
+[data-theme="light"] [class*="ring-[#FCA311]" i] { --tw-ring-color: var(--accent) !important; }
+[data-theme="light"] [class*="shadow-[#FCA311]" i] { --tw-shadow-color: var(--accent) !important; }
+[data-theme="light"] [class*="from-[#FCA311]" i] { --tw-gradient-from: var(--accent) !important; }
+[data-theme="light"] [class*="accent-[#FCA311]" i] { accent-color: var(--accent) !important; }
+[data-theme="light"] [class*="to-[#f59e0b]"],
+[data-theme="light"] [class*="from-[#f59e0b]"],
+[data-theme="light"] [class*="to-[#d97706]"],
+[data-theme="light"] [class*="to-[#f78e05]"] { --tw-gradient-to: var(--accent-soft) !important; --tw-gradient-from: var(--accent-soft) !important; }
+[data-theme="light"] [class*="hover:bg-[#e2930f]"]:hover { background-color: var(--accent-hover) !important; }
+[data-theme="light"] [class*="hover:text-[#FCA311]" i]:hover { color: var(--accent) !important; }
+[data-theme="light"] [class*="hover:border-[#FCA311]" i]:hover { border-color: var(--accent) !important; }
+[data-theme="light"] [class*="focus:border-[#FCA311]" i]:focus { border-color: var(--accent) !important; }
+
+/* Secondary accent (cyan -> blue) */
+[data-theme="light"] [class*="bg-[#00e5ff]"] { background-color: var(--accent-2) !important; }
+[data-theme="light"] [class*="text-[#00e5ff]"] { color: var(--accent-2) !important; }
+[data-theme="light"] [class*="border-[#00e5ff]"] { border-color: var(--accent-2) !important; }
+[data-theme="light"] [class*="ring-[#00e5ff]"] { --tw-ring-color: var(--accent-2) !important; }
+[data-theme="light"] [class*="accent-[#00e5ff]"] { accent-color: var(--accent-2) !important; }
+[data-theme="light"] [class*="hover:text-[#00e5ff]"]:hover { color: var(--accent-2) !important; }
+[data-theme="light"] [class*="hover:bg-[#00e5ff]"]:hover { background-color: var(--accent-2) !important; }
+[data-theme="light"] [class*="hover:border-[#00e5ff]"]:hover { border-color: var(--accent-2) !important; }
+[data-theme="light"] [class*="focus:border-[#00e5ff]"]:focus { border-color: var(--accent-2) !important; }
+
+/* Tertiary accent (teal -> sky blue), used for the audio track */
+[data-theme="light"] [class*="bg-[#2dd4bf]"] { background-color: var(--accent-3) !important; }
+[data-theme="light"] [class*="text-[#2dd4bf]"] { color: var(--accent-3) !important; }
+[data-theme="light"] [class*="border-[#2dd4bf]"] { border-color: var(--accent-3) !important; }
+
+/* Neutral text */
+[data-theme="light"] [class*="text-white"],
+[data-theme="light"] [class*="text-gray-200"],
+[data-theme="light"] [class*="text-blue-100"],
+[data-theme="light"] [class*="text-blue-200"] { color: var(--text-primary) !important; }
+[data-theme="light"] [class*="hover:text-white"]:hover,
+[data-theme="light"] [class*="hover:text-blue-100"]:hover { color: var(--text-primary) !important; }
+
+[data-theme="light"] [class*="text-gray-300"],
+[data-theme="light"] [class*="text-gray-400"],
+[data-theme="light"] [class*="text-gray-500"],
+[data-theme="light"] [class*="text-gray-600"],
+[data-theme="light"] [class*="text-slate-300"],
+[data-theme="light"] [class*="text-slate-400"],
+[data-theme="light"] [class*="text-blue-300"],
+[data-theme="light"] [class*="text-blue-400"] { color: var(--text-secondary) !important; }
+
+[data-theme="light"] [class*="placeholder:text-blue-300"]::placeholder,
+[data-theme="light"] [class*="placeholder:text-gray-400"]::placeholder,
+[data-theme="light"] [class*="placeholder:text-gray-500"]::placeholder { color: var(--text-muted) !important; }
+
+/* Neutral surfaces & borders built from white/opacity utilities */
+[data-theme="light"] [class*="border-white/"],
+[data-theme="light"] [class*="border-white"],
+[data-theme="light"] [class*="ring-white/"],
+[data-theme="light"] [class*="divide-white/"] { border-color: var(--border) !important; }
+[data-theme="light"] [class*="hover:border-white/"]:hover { border-color: var(--border-2) !important; }
+
+[data-theme="light"] [class*="bg-white/"],
+[data-theme="light"] [class*="bg-white"] { background-color: var(--overlay-soft) !important; }
+[data-theme="light"] [class*="hover:bg-white/"]:hover,
+[data-theme="light"] [class*="hover:bg-white"]:hover { background-color: var(--overlay-medium) !important; }
+
+/* Scrollbar + selection follow the panel palette */
+[data-theme="light"] { color-scheme: light; }
+:root:not([data-theme="light"]) { color-scheme: dark; }

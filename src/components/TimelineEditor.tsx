@@ -571,7 +571,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                   style={{
                     left: `${left}%`,
                     width: `${width}%`,
-                    backgroundColor: isSelected ? '#1c2d54' : '#14213D',
+                    backgroundColor: isSelected ? 'var(--surface-active)' : 'var(--bg-input)',
                   }}
                 >
                   <div className="flex items-center justify-between overflow-hidden">
