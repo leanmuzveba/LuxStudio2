@@ -47,6 +47,11 @@ function captureAudioViaPlayback(
     video.src = url;
     video.preload = 'auto';
     video.playsInline = true;
+    // Not .muted (that zeroes the Web Audio-captured PCM too, see above) —
+    // volume 0 keeps it silent without that side effect, and browsers treat
+    // volume-0 playback the same as muted for the autoplay-without-a-fresh-
+    // user-gesture allowance.
+    video.volume = 0;
 
     let ctx: AudioContext | null = null;
     let source: MediaElementAudioSourceNode | null = null;
@@ -68,6 +73,7 @@ function captureAudioViaPlayback(
     const fail = (err: unknown) => {
       if (settled) return;
       settled = true;
+      console.warn('[audioAnalysis] capture failed:', err);
       cleanup();
       reject(err instanceof Error ? err : new Error(String(err)));
     };
@@ -93,7 +99,9 @@ function captureAudioViaPlayback(
       outBuffer = grown;
     };
 
-    video.addEventListener('error', () => fail(new Error('Failed to load media for audio analysis')));
+    video.addEventListener('error', () =>
+      fail(new Error(`Failed to load media for audio analysis (code ${video.error?.code}: ${video.error?.message})`))
+    );
 
     video.addEventListener('loadedmetadata', () => {
       const durationSec = video.duration || 0;

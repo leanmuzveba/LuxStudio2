@@ -867,7 +867,8 @@ const ThinAudioWaveform: React.FC<{
           )
         );
       })
-      .catch(() => {
+      .catch((err) => {
+        console.warn('[ThinAudioWaveform] waveform decode failed:', err);
         if (!cancelled) setFailed(true);
       });
 
