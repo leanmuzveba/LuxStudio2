@@ -21,12 +21,10 @@ export function drawVideoFrame({
   captionStyle,
   customVideoElement,
 }: RenderFrameOptions) {
-  // If user uploaded their own video and it's ready, draw it!
-  if (
-    customVideoElement &&
-    customVideoElement.readyState >= 2 &&
-    !customVideoElement.paused
-  ) {
+  // If user uploaded their own video and it has a decoded frame ready, draw it
+  // — regardless of play/pause state, so the canvas always shows the frame at
+  // the current scrub/pause position instead of falling back to the placeholder.
+  if (customVideoElement && customVideoElement.readyState >= 2) {
     ctx.drawImage(customVideoElement, 0, 0, width, height);
   } else {
     // Generate realistic studio/sanctuary presentation background
