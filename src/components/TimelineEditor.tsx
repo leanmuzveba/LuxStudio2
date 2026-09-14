@@ -19,12 +19,15 @@ import {
   Music,
   Subtitles,
   Upload,
+  MousePointer2,
 } from 'lucide-react';
 import { Track, Clip, SilenceSegment, CaptionSegment } from '../types';
 import { formatTimecode } from '../utils/formatters';
 import { splitTracksAtTime } from '../utils/timelineOps';
 import { decodeAudioSource, computeWaveformPeaks } from '../utils/audioAnalysis';
 import { getVideoThumbnails } from '../utils/videoThumbnails';
+
+type ToolMode = 'select' | 'split';
 
 interface TimelineEditorProps {
   tracks: Track[];
@@ -64,6 +67,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   onSelectTrackFile,
 }) => {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [toolMode, setToolMode] = useState<ToolMode>('select');
   const [zoomLevel, setZoomLevel] = useState<number>(1); // 0.4x to 3.5x zoom
   const [trackHeaderWidth, setTrackHeaderWidth] = useState<number>(56);
   const [isDraggingHeader, setIsDraggingHeader] = useState<boolean>(false);
@@ -199,13 +203,21 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
     );
   };
 
-  // Timeline scrub calculation
+  // Timeline scrub calculation (or, in Split tool mode, cut every track at the click point)
   const handleTimelineMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!timelineRef.current) return;
     const rect = timelineRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const ratio = Math.max(0, Math.min(1, clickX / rect.width));
-    onSeek(Math.floor(ratio * durationMs));
+    const timeMs = Math.floor(ratio * durationMs);
+
+    if (toolMode === 'split') {
+      onTracksChange(splitTracksAtTime(tracks, timeMs));
+      onSeek(timeMs);
+      return;
+    }
+
+    onSeek(timeMs);
     setIsScrubbing(true);
   };
 
@@ -237,6 +249,38 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
       >
         {/* Left: Quick action buttons - icon only as requested */}
         <div className="flex items-center gap-1.5">
+          {/* Tool Mode: Select vs Split (click-to-cut across all tracks) */}
+          <div className="flex items-center bg-black/40 border border-white/10 p-0.5">
+            <button
+              id="btn-tool-select"
+              onClick={() => setToolMode('select')}
+              title="Select Tool (click clips to select)"
+              aria-label="Select Tool"
+              aria-pressed={toolMode === 'select'}
+              className={`p-1 transition-colors ${
+                toolMode === 'select'
+                  ? 'bg-[#FCA311]/20 text-[#FCA311]'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <MousePointer2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              id="btn-tool-split"
+              onClick={() => setToolMode('split')}
+              title="Split Tool (click the timeline to cut video + audio together)"
+              aria-label="Split Tool"
+              aria-pressed={toolMode === 'split'}
+              className={`p-1 transition-colors ${
+                toolMode === 'split'
+                  ? 'bg-[#FCA311]/20 text-[#FCA311]'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <Scissors className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           {/* Split Clip Icon */}
           <button
             id="btn-split-clip"
@@ -496,7 +540,9 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
           ref={timelineRef}
           onMouseDown={handleTimelineMouseDown}
           onMouseMove={handleTimelineMouseMove}
-          className="relative flex-1 min-w-[800px] flex flex-col bg-[#060a14] cursor-crosshair overflow-hidden"
+          className={`relative flex-1 min-w-[800px] flex flex-col bg-[#060a14] overflow-hidden ${
+            toolMode === 'split' ? 'cursor-crosshair' : 'cursor-default'
+          }`}
           style={{ width: `${100 * zoomLevel}%` }}
         >
           {/* Time Ruler */}
@@ -524,10 +570,13 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                 <div
                   key={clip.id}
                   onClick={(e) => {
+                    if (toolMode !== 'select') return;
                     e.stopPropagation();
                     setSelectedClipId(clip.id);
                   }}
-                  className={`absolute h-14 px-2.5 py-1 flex flex-col justify-between cursor-pointer transition-all border ${
+                  className={`absolute h-14 px-2.5 py-1 flex flex-col justify-between transition-all border ${
+                    toolMode === 'select' ? 'cursor-pointer' : ''
+                  } ${
                     isSelected
                       ? 'border-[#FCA311] ring-2 ring-[#FCA311]/40 shadow-lg shadow-[#FCA311]/20'
                       : 'border-white/15 hover:border-white/40'
