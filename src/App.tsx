@@ -610,6 +610,7 @@ export function App() {
                 onAutoCutSilences={handleAutoCutSilences}
                 onRestoreSilences={handleRestoreSilences}
                 captions={captions}
+                onCaptionsChange={setCaptions}
                 autoMergeEnabled={autoMergeEnabled}
                 onToggleAutoMerge={setAutoMergeEnabled}
                 onSelectTrackFile={handleSelectTrackFile}

@@ -43,6 +43,7 @@ interface TimelineEditorProps {
   onAutoCutSilences: () => void;
   onRestoreSilences: () => void;
   captions: CaptionSegment[];
+  onCaptionsChange: (captions: CaptionSegment[]) => void;
   autoMergeEnabled: boolean;
   onToggleAutoMerge: (enabled: boolean) => void;
   onSelectTrackFile: (trackId: 'track-video' | 'track-audio', file: File) => void;
@@ -62,6 +63,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   onAutoCutSilences,
   onRestoreSilences,
   captions,
+  onCaptionsChange,
   autoMergeEnabled,
   onToggleAutoMerge,
   onSelectTrackFile,
@@ -99,6 +101,57 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
+  };
+
+  // Drag handler for manually moving/resizing a caption segment on the timeline
+  const handleCaptionDragStart = (
+    e: React.MouseEvent,
+    cap: CaptionSegment,
+    mode: 'move' | 'resize-left' | 'resize-right'
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!timelineRef.current) return;
+
+    const rect = timelineRef.current.getBoundingClientRect();
+    const startClientX = e.clientX;
+    const originalStart = cap.startMs;
+    const originalEnd = cap.endMs;
+    let moved = false;
+
+    const onMove = (moveEvent: MouseEvent) => {
+      const deltaPx = moveEvent.clientX - startClientX;
+      if (Math.abs(deltaPx) > 3) moved = true;
+      const deltaMs = (deltaPx / rect.width) * durationMs;
+
+      let newStart = originalStart;
+      let newEnd = originalEnd;
+
+      if (mode === 'move') {
+        const span = originalEnd - originalStart;
+        newStart = Math.max(0, Math.min(durationMs - span, originalStart + deltaMs));
+        newEnd = newStart + span;
+      } else if (mode === 'resize-left') {
+        newStart = Math.max(0, Math.min(originalEnd - 200, originalStart + deltaMs));
+      } else {
+        newEnd = Math.min(durationMs, Math.max(originalStart + 200, originalEnd + deltaMs));
+      }
+
+      onCaptionsChange(
+        captions.map((c) =>
+          c.id === cap.id ? { ...c, startMs: Math.round(newStart), endMs: Math.round(newEnd) } : c
+        )
+      );
+    };
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      if (!moved && mode === 'move') onSeek(originalStart);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   };
 
   // Wheel handler for CTRL + Scroll zooming on timeline and bottom bar
@@ -661,7 +714,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
               })}
           </div>
 
-          {/* Captions Track Lane */}
+          {/* Captions Track Lane - draggable to retime, resizable from either edge */}
           <div className="h-12 border-b border-white/5 relative p-1 flex items-center bg-[#070b16]">
             {captions.map((cap) => {
               const left = (cap.startMs / durationMs) * 100;
@@ -672,12 +725,9 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
               return (
                 <div
                   key={cap.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSeek(cap.startMs);
-                  }}
+                  onMouseDown={(e) => handleCaptionDragStart(e, cap, 'move')}
                   title={cap.text}
-                  className={`absolute h-8 px-2 flex items-center cursor-pointer transition-all border text-[10px] font-medium truncate ${
+                  className={`group absolute h-8 px-2 flex items-center cursor-grab active:cursor-grabbing transition-all border text-[10px] font-medium truncate select-none ${
                     isActive
                       ? 'bg-[#FCA311] text-black font-bold border-white shadow-md'
                       : 'bg-[#14213D]/90 text-gray-200 border-white/10 hover:border-white/30'
@@ -687,7 +737,15 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                     width: `${Math.max(width, 2)}%`,
                   }}
                 >
-                  <span className="truncate">{cap.text}</span>
+                  <div
+                    onMouseDown={(e) => handleCaptionDragStart(e, cap, 'resize-left')}
+                    className="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-white/30 opacity-0 group-hover:opacity-100"
+                  />
+                  <span className="truncate pointer-events-none">{cap.text}</span>
+                  <div
+                    onMouseDown={(e) => handleCaptionDragStart(e, cap, 'resize-right')}
+                    className="absolute right-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-white/30 opacity-0 group-hover:opacity-100"
+                  />
                 </div>
               );
             })}
