@@ -28,6 +28,8 @@ interface CaptionsEditorProps {
   onSeek: (ms: number) => void;
   onAutoGenerateCaptions: () => void;
   isTranscribing: boolean;
+  /** Why the last Auto Captions request couldn't run (shown under the button). */
+  captionsNotice?: string | null;
 }
 
 // Letter Effects Presets (Corresponding to Screenshot 3 Aa Grid)
@@ -566,6 +568,7 @@ export const CaptionsEditor: React.FC<CaptionsEditorProps> = ({
   onSeek,
   onAutoGenerateCaptions,
   isTranscribing,
+  captionsNotice = null,
 }) => {
   // Top primary tabs: Captions | Text | Animation | Tracking | Text to speech
   const [topTab, setTopTab] = useState<'Captions' | 'Text' | 'Animation' | 'Tracking' | 'Text to speech'>('Captions');
@@ -743,15 +746,19 @@ export const CaptionsEditor: React.FC<CaptionsEditorProps> = ({
                 />
               </div>
 
+              <button
+                id="btn-auto-captions"
+                onClick={() => onAutoGenerateCaptions()}
+                disabled={isTranscribing}
+                title="Generate captions automatically from the video's speech"
+                className="flex items-center gap-1 px-2 py-1 bg-[#FCA311] hover:brightness-110 text-black text-[10px] font-bold whitespace-nowrap transition-all active:scale-95 disabled:opacity-60"
+              >
+                <Sparkles className="w-3 h-3" />
+                {isTranscribing ? 'Transcribing…' : 'Auto Captions'}
+              </button>
+
               {/* Utility Icons on right */}
               <div className="flex items-center gap-0.5 text-blue-300/70">
-                <button
-                  onClick={() => onAutoGenerateCaptions()}
-                  title={isTranscribing ? 'Transcribing...' : 'Auto-Transcribe with AI'}
-                  className="p-1 hover:text-[#00e5ff] hover:bg-[#14213D] transition-colors rounded"
-                >
-                  <Sparkles className="w-2.5 h-2.5" />
-                </button>
                 <button
                   onClick={() => handleAddSegment()}
                   title="Add Caption"
@@ -780,13 +787,40 @@ export const CaptionsEditor: React.FC<CaptionsEditorProps> = ({
               </div>
             </div>
 
+            {captionsNotice && (
+              <div id="captions-notice" className="px-3 py-2 text-[10px] leading-snug text-amber-200 bg-amber-950/40 border-b border-amber-500/30">
+                {captionsNotice}
+              </div>
+            )}
+
+            {/* Empty state: make Auto Captions the obvious first action */}
+            {captions.length === 0 && (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center">
+                <Sparkles className="w-6 h-6 text-[#FCA311]" />
+                <div className="text-[12px] font-semibold text-white">No captions yet</div>
+                <p className="text-[10px] text-blue-200/60 max-w-[220px]">
+                  Generate captions from the video's speech, or add lines by hand with the scissors icon.
+                </p>
+                <button
+                  id="btn-auto-captions-empty"
+                  onClick={() => onAutoGenerateCaptions()}
+                  disabled={isTranscribing}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-[#FCA311] hover:brightness-110 text-black text-[11px] font-bold transition-all active:scale-95 disabled:opacity-60"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  {isTranscribing ? 'Transcribing…' : 'Generate Auto Captions'}
+                </button>
+              </div>
+            )}
+
             {/* Captions List with Line Numbers */}
-            <div className="flex-1 overflow-y-auto divide-y divide-[#14213D]/60">
-              {filteredCaptions.map((cap, index) => {
+            <div className={`${captions.length === 0 ? 'hidden' : 'flex-1'} overflow-y-auto divide-y divide-[#14213D]/60`}>
+              {filteredCaptions.map((cap) => {
                 const isActive =
                   currentTimeMs >= cap.startMs && currentTimeMs <= cap.endMs;
                 const isSelected = selectedCaptionId === cap.id;
-                const lineNumber = 73 + index;
+                // Position in the full list, so numbers stay stable while searching.
+                const lineNumber = captions.indexOf(cap) + 1;
 
                 return (
                   <div
@@ -830,7 +864,7 @@ export const CaptionsEditor: React.FC<CaptionsEditorProps> = ({
                     {/* Action buttons on hover */}
                     <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 shrink-0 transition-opacity">
                       <button
-                        onClick={(e) => handleAddSegment(index, e)}
+                        onClick={(e) => handleAddSegment(lineNumber - 1, e)}
                         title="Add next caption"
                         className="p-0.5 text-blue-300 hover:text-[#00e5ff] transition-colors"
                       >

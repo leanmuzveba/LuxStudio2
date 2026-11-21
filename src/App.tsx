@@ -197,6 +197,7 @@ export function App() {
   const [isGeneratingClips, setIsGeneratingClips] = useState<boolean>(false);
   const [isRegeneratingSummary, setIsRegeneratingSummary] = useState<boolean>(false);
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
+  const [captionsNotice, setCaptionsNotice] = useState<string | null>(null);
   const [customVideoUrl, setCustomVideoUrl] = useState<string | null>(null);
 
   // Calculate Active Caption at current playhead time
@@ -304,15 +305,15 @@ export function App() {
 
   // Auto-Generate / Transcribe Captions
   const handleAutoGenerateCaptions = async () => {
-    if (tracks.every((t) => t.clips.length === 0)) return;
-    setIsTranscribing(true);
-    try {
-      // No speech-to-text backend is wired up yet, so there is nothing real
-      // to transcribe — deliberately not fabricating caption text here.
-      console.warn('Auto-transcription has no speech-to-text backend configured yet.');
-    } finally {
-      setIsTranscribing(false);
+    if (tracks.every((t) => t.clips.length === 0)) {
+      setCaptionsNotice('Upload a video first, then generate captions from its speech.');
+      return;
     }
+    // No speech-to-text service is connected yet, so there is nothing real to
+    // transcribe. Say so instead of silently doing nothing (or inventing text).
+    setCaptionsNotice(
+      "Auto captions need a speech-to-text service, which isn't connected yet. You can add caption lines by hand meanwhile."
+    );
   };
 
   // AI Short Clip Selection -> Loads into timeline
@@ -587,6 +588,7 @@ export function App() {
                     onSeek={handleSeek}
                     onAutoGenerateCaptions={handleAutoGenerateCaptions}
                     isTranscribing={isTranscribing}
+                    captionsNotice={captionsNotice}
                   />
                 </div>
               </div>
