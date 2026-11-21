@@ -22,7 +22,10 @@ import {
 } from './types';
 import { DEFAULT_CHURCH_BRANDING, DEFAULT_CAPTION_STYLES } from './defaults';
 import { getDecodedAudio, detectSilenceRanges } from './utils/audioAnalysis';
-import { removeRangesFromTracks } from './utils/timelineOps';
+import { removeRangesFromTracks, removeRangesFromTimedItems } from './utils/timelineOps';
+
+const tracksDuration = (tracks: Track[]) =>
+  Math.max(0, ...tracks.flatMap((t) => t.clips.map((c) => c.endMs)));
 
 // The empty project a fresh session (or "Clear Project") starts from — real
 // track slots so per-track upload/mute controls work, but no clips, captions,
@@ -94,6 +97,7 @@ export function App() {
 
   // Captions & Caption Style (3 Templates)
   const [captions, setCaptions] = useState<CaptionSegment[]>([]);
+  const originalCaptionsRef = useRef<CaptionSegment[]>([]);
   const [captionStyle, setCaptionStyle] = useState<CaptionStyle>(
     DEFAULT_CAPTION_STYLES['bold-impact']
   );
@@ -209,16 +213,18 @@ export function App() {
   const updateTracksWithHistory = (newTracks: Track[]) => {
     setHistoryPast((prev) => [...prev.slice(-20), tracks]);
     setHistoryFuture([]);
-    setTracks(newTracks);
+    applyTracks(newTracks);
+  };
 
-    // Recalculate duration from latest clip end
-    let maxEnd = 0;
-    newTracks.forEach((t) => {
-      t.clips.forEach((c) => {
-        if (c.endMs > maxEnd) maxEnd = c.endMs;
-      });
-    });
-    if (maxEnd > 0) setDurationMs(maxEnd);
+  // Sets tracks and keeps durationMs (and the playhead) consistent with them —
+  // shared by edits, undo and redo so none of them leave a stale duration.
+  const applyTracks = (newTracks: Track[]) => {
+    setTracks(newTracks);
+    const end = tracksDuration(newTracks);
+    if (end > 0) {
+      setDurationMs(end);
+      setCurrentTimeMs((t) => Math.min(t, end));
+    }
   };
 
   // Undo / Redo handlers
@@ -227,7 +233,7 @@ export function App() {
     const previous = historyPast[historyPast.length - 1];
     setHistoryPast((prev) => prev.slice(0, -1));
     setHistoryFuture((prev) => [tracks, ...prev]);
-    setTracks(previous);
+    applyTracks(previous);
   };
 
   const handleRedo = () => {
@@ -235,7 +241,7 @@ export function App() {
     const next = historyFuture[0];
     setHistoryFuture((prev) => prev.slice(1));
     setHistoryPast((prev) => [...prev, tracks]);
-    setTracks(next);
+    applyTracks(next);
   };
 
   // Play / Pause Toggle
@@ -254,14 +260,20 @@ export function App() {
   const handleAutoCutSilences = () => {
     if (silenceSegments.length === 0) return;
     originalTracksRef.current = tracks;
+    originalCaptionsRef.current = captions;
     setIsSilenceCut(true);
-    const cutTracks = removeRangesFromTracks(tracks, silenceSegments);
-    updateTracksWithHistory(cutTracks);
+    updateTracksWithHistory(removeRangesFromTracks(tracks, silenceSegments));
+    setCaptions(
+      removeRangesFromTimedItems<CaptionSegment>(captions, silenceSegments).map((c) =>
+        c.words ? { ...c, words: removeRangesFromTimedItems(c.words, silenceSegments) } : c
+      )
+    );
   };
 
   const handleRestoreSilences = () => {
     setIsSilenceCut(false);
     updateTracksWithHistory(originalTracksRef.current);
+    setCaptions(originalCaptionsRef.current);
   };
 
   // Auto-Generate / Transcribe Captions
@@ -301,8 +313,8 @@ export function App() {
 
       if (response.ok) {
         const data = await response.json();
-        if (data.clips && data.clips.length > 0) {
-          setAiClipCandidates((prev) => [...data.clips, ...prev]);
+        if (data.candidates && data.candidates.length > 0) {
+          setAiClipCandidates((prev) => [...data.candidates, ...prev]);
         }
       }
     } catch (err) {

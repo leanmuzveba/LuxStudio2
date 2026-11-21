@@ -65,6 +65,23 @@ export function removeRangesFromTracks(tracks: Track[], ranges: TimeRange[]): Tr
   }));
 }
 
+/**
+ * Shifts timed items (captions) by the same cut math as the tracks, so they
+ * stay on the words they belong to. Items that fall entirely inside a cut are
+ * dropped; items straddling a cut edge are trimmed to it.
+ */
+export function removeRangesFromTimedItems<T extends TimeRange>(items: T[], ranges: TimeRange[]): T[] {
+  const merged = mergeRanges(ranges);
+  if (merged.length === 0) return items;
+  return items
+    .map((item) => ({
+      ...item,
+      startMs: item.startMs - shiftForTime(item.startMs, merged),
+      endMs: item.endMs - shiftForTime(item.endMs, merged),
+    }))
+    .filter((item) => item.endMs - item.startMs >= 20);
+}
+
 function shiftForTime(t: number, merged: TimeRange[]): number {
   let removed = 0;
   for (const range of merged) {

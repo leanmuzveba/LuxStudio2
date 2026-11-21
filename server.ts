@@ -267,45 +267,6 @@ Format response strictly as JSON:
   }
 });
 
-// Endpoint: Silence Detection Analyzer
-app.post("/api/gemini/silence-detect", (req, res) => {
-  try {
-    const { durationMs, thresholdDb = -32, minSilenceMs = 600, paddingMs = 120 } = req.body;
-    const dur = Number(durationMs) || 360000;
-
-    // Deterministically compute realistic silence pockets based on natural speech cadence
-    // Creates realistic pauses between thought blocks every 15-40 seconds
-    const silences = [];
-    let cur = 8500;
-    while (cur < dur - 15000) {
-      const silenceLen = Math.floor(800 + Math.sin(cur) * 500 + 400);
-      if (silenceLen >= minSilenceMs) {
-        silences.push({
-          id: `silence-${silences.length + 1}`,
-          startMs: cur,
-          endMs: cur + silenceLen,
-          durationMs: silenceLen,
-          noiseLevelDb: -38.5,
-        });
-      }
-      cur += Math.floor(18000 + Math.cos(cur) * 9000);
-    }
-
-    const totalSilenceMs = silences.reduce((acc, s) => acc + s.durationMs, 0);
-
-    res.json({
-      silences,
-      totalSilenceMs,
-      savedTimeSec: (totalSilenceMs / 1000).toFixed(1),
-      thresholdDb,
-      minSilenceMs,
-      paddingMs,
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || "Silence detection failed" });
-  }
-});
-
 // Vite middleware setup
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

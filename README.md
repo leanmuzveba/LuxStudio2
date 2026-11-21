@@ -8,7 +8,7 @@ This is a from-scratch React rewrite of LuxStudio (the original is a Flutter + F
 
 - **Timeline editor** — multi-track (video / audio / captions) timeline with Select and Split tools, merge, delete, zoom (real waveform/frame detail scales with zoom level), scrubbing, and drag-to-resize panels. Splitting or auto-cutting always cuts every track at the same instant, so video and audio stay in sync.
 - **Real waveforms & thumbnails** — the audio track's waveform and the video track's filmstrip are generated from the actual uploaded media, not a simulated shape.
-- **Auto silence removal** — uploads the file to the server, where ffmpeg extracts its audio (seconds, even for multi-hour sermons), then scans the full duration for silent stretches and can auto-cut them into a "clean speech" edit, with one-click restore.
+- **Auto silence removal** — uploads the file to the server, where ffmpeg extracts its audio (seconds, even for multi-hour sermons), then scans the full duration for silent stretches and can auto-cut them into a "clean speech" edit — captions shift with the cut — with one-click restore.
 - **Captions** — a searchable caption list synced to playback, draggable/resizable directly on the timeline, adjustable per-segment timing/text, and a style panel (font, color, animation, position, badges) with several built-in presets.
 - **Light/dark theme** — a header toggle switches between the default dark navy/gold look and a grey shell with blue accents.
 - **AI Short Clips** — surfaces candidate highlight moments (hook + rationale + virality score) from the sermon, ready to drop into a 9:16 export.
