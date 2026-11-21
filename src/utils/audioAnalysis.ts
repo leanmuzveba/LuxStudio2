@@ -114,54 +114,6 @@ function toMonoSamples(buffer: DecodedAudioLike): Float32Array {
   return mono;
 }
 
-export interface WaveformPeaks {
-  min: Float32Array;
-  max: Float32Array;
-}
-
-/**
- * Peak (min/max) amplitude per bucket across [startSec, endSec). Bucket count
- * should track the rendered pixel width so zooming the timeline in/out
- * changes how much real detail is visible, not just how stretched a fixed
- * set of bars looks.
- */
-export function computeWaveformPeaks(
-  buffer: DecodedAudioLike,
-  bucketCount: number,
-  startSec: number,
-  endSec: number
-): WaveformPeaks {
-  const sampleRate = buffer.sampleRate;
-  const mono = toMonoSamples(buffer);
-  const startSample = Math.max(0, Math.min(mono.length, Math.floor(startSec * sampleRate)));
-  const endSample = Math.max(startSample, Math.min(mono.length, Math.floor(endSec * sampleRate)));
-  const span = Math.max(1, endSample - startSample);
-  const buckets = Math.max(1, bucketCount);
-  const bucketSize = Math.max(1, span / buckets);
-  const maxSamplesPerBucket = 2000; // caps work on very zoomed-out / long clips
-
-  const min = new Float32Array(buckets);
-  const max = new Float32Array(buckets);
-
-  for (let i = 0; i < buckets; i++) {
-    const bucketStart = startSample + Math.floor(i * bucketSize);
-    const bucketEnd = i === buckets - 1 ? endSample : Math.min(endSample, startSample + Math.floor((i + 1) * bucketSize));
-    const stride = Math.max(1, Math.floor((bucketEnd - bucketStart) / maxSamplesPerBucket));
-
-    let bucketMin = 0;
-    let bucketMax = 0;
-    for (let j = bucketStart; j < bucketEnd; j += stride) {
-      const v = mono[j];
-      if (v > bucketMax) bucketMax = v;
-      if (v < bucketMin) bucketMin = v;
-    }
-    min[i] = bucketMin;
-    max[i] = bucketMax;
-  }
-
-  return { min, max };
-}
-
 export interface SilenceRange {
   startMs: number;
   endMs: number;

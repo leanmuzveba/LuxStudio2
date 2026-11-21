@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import {
   Scissors,
   Layers,
@@ -25,7 +25,7 @@ import {
 import { Track, Clip, SilenceSegment, SilenceSettings, CaptionSegment } from '../types';
 import { formatTimecode } from '../utils/formatters';
 import { splitTracksAtTime } from '../utils/timelineOps';
-import { getDecodedAudio, computeWaveformPeaks } from '../utils/audioAnalysis';
+import { getDecodedAudio, DecodedAudioLike } from '../utils/audioAnalysis';
 import { getVideoThumbnails } from '../utils/videoThumbnails';
 
 type ToolMode = 'select' | 'split';
@@ -83,7 +83,9 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
 }) => {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [toolMode, setToolMode] = useState<ToolMode>('select');
-  const [zoomLevel, setZoomLevel] = useState<number>(1); // 0.4x to 3.5x zoom
+  const [zoom, setZoom] = useState<number>(1); // 1 = whole project fits the view
+  const [viewportW, setViewportW] = useState<number>(0); // visible track width (px)
+  const [scrollLeft, setScrollLeft] = useState<number>(0);
   const [trackHeaderWidth, setTrackHeaderWidth] = useState<number>(56);
   const [isDraggingHeader, setIsDraggingHeader] = useState<boolean>(false);
   const timelineRef = useRef<HTMLDivElement | null>(null);
@@ -168,16 +170,73 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
     window.addEventListener('mouseup', onUp);
   };
 
-  // Wheel handler for CTRL + Scroll zooming on timeline and bottom bar
+  // --- Zoom & horizontal scroll ---
+  // The tracks are viewportW * zoom pixels wide inside a horizontally
+  // scrolling container; deep zoom reaches ~150 px per second of media.
+  const MAX_PX_PER_SEC = 150;
+  const maxZoom = Math.max(1, ((durationMs / 1000) * MAX_PX_PER_SEC) / Math.max(1, viewportW));
+  const zoomEff = Math.min(zoom, maxZoom);
+  const contentW = Math.max(1, viewportW * zoomEff);
+
+  useEffect(() => {
+    const el = timelineContainerRef.current;
+    if (!el) return;
+    const update = () => setViewportW(Math.max(0, el.clientWidth - trackHeaderWidth));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [trackHeaderWidth]);
+
+  // Zoom keeping one point fixed on screen: the cursor (wheel), else the
+  // playhead if visible, else the view centre.
+  const pendingAnchorRef = useRef<{ ratio: number; ax: number } | null>(null);
+  const zoomTo = (next: number, anchorX?: number) => {
+    const z = Math.min(maxZoom, Math.max(1, next));
+    if (z === zoomEff) return;
+    const el = timelineContainerRef.current;
+    if (el && viewportW > 0) {
+      const playX = durationMs > 0 ? (currentTimeMs / durationMs) * contentW - el.scrollLeft : -1;
+      const ax = Math.max(0, Math.min(viewportW, anchorX ?? (playX >= 0 && playX <= viewportW ? playX : viewportW / 2)));
+      pendingAnchorRef.current = { ratio: (el.scrollLeft + ax) / contentW, ax };
+    }
+    setZoom(z);
+  };
+  useLayoutEffect(() => {
+    const p = pendingAnchorRef.current;
+    const el = timelineContainerRef.current;
+    if (!p || !el) return;
+    pendingAnchorRef.current = null;
+    el.scrollLeft = p.ratio * contentW - p.ax;
+  }, [contentW]);
+
+  const zoomToRef = useRef(zoomTo);
+  zoomToRef.current = zoomTo;
+  const zoomEffRef = useRef(zoomEff);
+  zoomEffRef.current = zoomEff;
+  const headerWidthRef = useRef(trackHeaderWidth);
+  headerWidthRef.current = trackHeaderWidth;
+
+  // Keep the playhead in view during playback.
+  useEffect(() => {
+    const el = timelineContainerRef.current;
+    if (!isPlaying || !el || durationMs <= 0 || isScrubbing) return;
+    const x = (currentTimeMs / durationMs) * contentW;
+    if (x < el.scrollLeft || x > el.scrollLeft + viewportW - 24) el.scrollLeft = x - viewportW * 0.1;
+  }, [currentTimeMs, isPlaying]);
+
+  // Wheel: Ctrl/Cmd zooms at the cursor; plain wheel scrolls the timeline sideways.
   useEffect(() => {
     const handleWheelZoom = (e: WheelEvent) => {
+      const el = timelineContainerRef.current;
+      if (!el) return;
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        const delta = e.deltaY < 0 ? 0.15 : -0.15;
-        setZoomLevel((prev) => {
-          const next = Math.min(3.5, Math.max(0.4, Number((prev + delta).toFixed(2))));
-          return next;
-        });
+        const rect = el.getBoundingClientRect();
+        zoomToRef.current(zoomEffRef.current * (e.deltaY < 0 ? 1.25 : 0.8), e.clientX - rect.left - headerWidthRef.current);
+      } else if (el.scrollWidth > el.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaY;
       }
     };
 
@@ -522,18 +581,18 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
           <div className="flex items-center gap-1 bg-black/40 p-0.5 border border-white/5">
             <button
               id="btn-zoom-out"
-              onClick={() => setZoomLevel((z) => Math.max(0.4, Number((z - 0.25).toFixed(2))))}
+              onClick={() => zoomTo(zoomEff / 1.5)}
               className="p-1 text-gray-400 hover:text-white"
               title="Zoom Out (or Ctrl + Scroll)"
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
             <span className="text-[10px] font-mono text-gray-400 w-9 text-center">
-              {Math.round(zoomLevel * 100)}%
+              {zoomEff < 10 ? zoomEff.toFixed(1) : Math.round(zoomEff)}x
             </span>
             <button
               id="btn-zoom-in"
-              onClick={() => setZoomLevel((z) => Math.min(3.5, Number((z + 0.25).toFixed(2))))}
+              onClick={() => zoomTo(zoomEff * 1.5)}
               className="p-1 text-gray-400 hover:text-white"
               title="Zoom In (or Ctrl + Scroll)"
             >
@@ -550,13 +609,14 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
       {/* Timeline Workspace Area */}
       <div
         ref={timelineContainerRef}
+        onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
         className="relative flex-1 overflow-x-auto overflow-y-auto flex"
       >
         {/* Track Headers Column (Left Fixed) - Adjustable width with splitter */}
         <div
           id="timeline-track-headers-column"
           style={{ width: `${trackHeaderWidth}px` }}
-          className="shrink-0 bg-[#0a1020] border-r border-[#14213D] flex flex-col z-20 shadow-md select-none overflow-hidden transition-all duration-75"
+          className="sticky left-0 shrink-0 bg-[#0a1020] border-r border-[#14213D] flex flex-col z-40 shadow-md select-none overflow-hidden"
         >
           {/* Ruler spacer */}
           <div className="h-7 border-b border-white/10 flex items-center justify-between px-2 text-gray-500" title="Tracks">
@@ -674,7 +734,8 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
         <div
           id="splitter-timeline-track-header"
           onMouseDown={handleStartDragHeader}
-          className={`w-2 -mx-1 z-30 cursor-col-resize group relative flex items-center justify-center transition-colors select-none ${
+          style={{ left: trackHeaderWidth - 4 }}
+          className={`w-2 -mx-1 z-40 cursor-col-resize group sticky flex items-center justify-center transition-colors select-none ${
             isDraggingHeader ? 'bg-[#00e5ff]' : 'hover:bg-[#00e5ff]/50 bg-transparent'
           }`}
           title="Drag to resize track header column (Adjustable boundary)"
@@ -689,16 +750,16 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
           ref={timelineRef}
           onMouseDown={handleTimelineMouseDown}
           onMouseMove={handleTimelineMouseMove}
-          className={`relative flex-1 min-w-[800px] flex flex-col bg-[#060a14] overflow-hidden ${
+          className={`relative shrink-0 flex flex-col bg-[#060a14] overflow-hidden ${
             toolMode === 'split' ? 'cursor-crosshair' : 'cursor-default'
           }`}
-          style={{ width: `${100 * zoomLevel}%` }}
+          style={{ width: `${contentW}px` }}
         >
           {/* Time Ruler */}
           <div className="h-7 border-b border-white/10 bg-[#080d1a] relative flex items-end select-none">
-            {generateRulerMarkers(durationMs).map((marker, i) => (
+            {generateRulerMarkers(durationMs, contentW, scrollLeft, viewportW).map((marker) => (
               <div
-                key={i}
+                key={marker.ms}
                 className="absolute text-[9px] text-gray-500 font-mono flex flex-col items-center transform -translate-x-1/2"
                 style={{ left: `${(marker.ms / durationMs) * 100}%` }}
               >
@@ -775,17 +836,18 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                     </span>
                   </div>
 
-                  {/* Real waveform, driven by the clip's actual decoded audio */}
-                  <div className="w-full pb-1 flex-1 min-h-0">
-                    <ThinAudioWaveform
-                      clip={clip}
-                      silenceSegments={silenceSegments}
-                      isSilenceCut={isSilenceCut}
-                    />
-                  </div>
                 </div>
               );
             })}
+
+            {/* Real waveform for the visible window (one canvas for all clips) */}
+            <WaveformLane
+              clips={tracks[1]?.clips ?? []}
+              durationMs={durationMs}
+              contentWidth={contentW}
+              scrollLeft={scrollLeft}
+              viewportWidth={viewportW}
+            />
 
             {/* Silence Marker Overlays on Waveform (highlighted in red if silence removal available) */}
             {!isSilenceCut &&
@@ -869,24 +931,35 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
       >
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setZoomLevel((z) => Math.max(0.4, Number((z - 0.25).toFixed(2))))}
+            id="btn-timeline-zoom-fit"
+            onClick={() => zoomTo(1)}
+            className="px-1.5 py-0.5 border border-white/10 hover:text-white hover:bg-white/5 transition-colors"
+            title="Fit the whole project in view"
+          >
+            Fit
+          </button>
+          <button
+            onClick={() => zoomTo(zoomEff / 1.5)}
             className="p-0.5 hover:text-white transition-colors"
             title="Zoom Out"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
           <input
+            id="input-timeline-zoom"
             type="range"
-            min="0.4"
-            max="3.5"
-            step="0.1"
-            value={zoomLevel}
-            onChange={(e) => setZoomLevel(parseFloat(e.target.value))}
-            className="w-28 h-1 bg-white/20 accent-[#FCA311] cursor-pointer"
-            title="Timeline Zoom Slider"
+            min={0}
+            max={1}
+            step={0.001}
+            disabled={maxZoom <= 1}
+            // Log scale: equal slider travel = equal zoom ratio, from whole project to ~seconds.
+            value={maxZoom > 1 ? Math.log(zoomEff) / Math.log(maxZoom) : 0}
+            onChange={(e) => zoomTo(Math.pow(maxZoom, parseFloat(e.target.value)))}
+            className="w-40 h-1 bg-white/20 accent-[#FCA311] cursor-pointer disabled:opacity-40"
+            title="Timeline zoom (Ctrl + scroll); scroll to move along the timeline"
           />
           <button
-            onClick={() => setZoomLevel((z) => Math.min(3.5, Number((z + 0.25).toFixed(2))))}
+            onClick={() => zoomTo(zoomEff * 1.5)}
             className="p-0.5 hover:text-white transition-colors"
             title="Zoom In"
           >
@@ -923,88 +996,100 @@ function useDebouncedWidth(delayMs = 120): [React.RefObject<HTMLDivElement>, num
   return [ref as React.RefObject<HTMLDivElement>, width];
 }
 
+/** Gain that maps the recording's 99.9th-percentile level to full height (robust to a single loud clap). */
+function displayGain(buf: DecodedAudioLike): number {
+  const data = buf.getChannelData(0);
+  const sample: number[] = [];
+  for (let i = 0; i < data.length; i += 50) sample.push(Math.abs(data[i]));
+  sample.sort((a, b) => a - b);
+  return 1 / Math.max(1e-3, sample[Math.floor(sample.length * 0.999)] || 0);
+}
+
 /**
- * Renders the clip's real waveform (one bar per pixel of rendered width, so
- * zooming the timeline in/out reveals more or less actual detail) instead of
- * a simulated shape.
+ * Draws the real waveform for the visible part of the audio lane only, on one
+ * canvas the width of the viewport. (The old version rendered a <div> per
+ * pixel per clip, which after a silence cut meant ~600k DOM nodes, and could
+ * not scale to deep zoom on long sermons.)
  */
-const ThinAudioWaveform: React.FC<{
-  clip: Clip;
-  silenceSegments: SilenceSegment[];
-  isSilenceCut: boolean;
-}> = ({ clip, silenceSegments, isSilenceCut }) => {
-  const [containerRef, width] = useDebouncedWidth();
-  const [peaks, setPeaks] = useState<{ min: Float32Array; max: Float32Array } | null>(null);
-  const [failed, setFailed] = useState(false);
-  const sourceUrl = clip.audioUrl || clip.videoUrl;
+const WaveformLane: React.FC<{
+  clips: Clip[];
+  durationMs: number;
+  contentWidth: number;
+  scrollLeft: number;
+  viewportWidth: number;
+}> = ({ clips, durationMs, contentWidth, scrollLeft, viewportWidth }) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Each decoded buffer with a display gain, so quiet recordings still show a readable waveform.
+  const [buffers, setBuffers] = useState<Record<string, { buf: DecodedAudioLike; gain: number }>>({});
+  const urls = Array.from(new Set(clips.map((c) => c.audioUrl || c.videoUrl).filter(Boolean))) as string[];
+  const urlsKey = urls.join('|');
 
   useEffect(() => {
-    if (!sourceUrl || width <= 0) return;
     let cancelled = false;
-    const bucketCount = Math.max(20, Math.min(2000, width));
-
-    getDecodedAudio(sourceUrl)
-      .then((buffer) => {
-        if (cancelled) return;
-        setPeaks(
-          computeWaveformPeaks(
-            buffer,
-            bucketCount,
-            clip.sourceStartMs / 1000,
-            clip.sourceEndMs / 1000
-          )
-        );
-      })
-      .catch((err) => {
-        console.warn('[ThinAudioWaveform] waveform decode failed:', err);
-        if (!cancelled) setFailed(true);
-      });
-
+    urls.forEach((url) => {
+      if (buffers[url]) return;
+      getDecodedAudio(url)
+        .then((buf) => {
+          if (!cancelled) setBuffers((prev) => ({ ...prev, [url]: { buf, gain: displayGain(buf) } }));
+        })
+        .catch((err) => console.warn('[WaveformLane] audio decode failed:', err));
+    });
     return () => {
       cancelled = true;
     };
-  }, [sourceUrl, clip.sourceStartMs, clip.sourceEndMs, width]);
+  }, [urlsKey]);
 
-  if (!sourceUrl || failed) {
-    return (
-      <div ref={containerRef} className="w-full h-full flex items-center justify-center pointer-events-none">
-        <span className="text-[8px] text-cyan-200/30 font-mono uppercase tracking-wider">
-          No audio
-        </span>
-      </div>
-    );
-  }
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || viewportWidth <= 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    const h = canvas.clientHeight;
+    canvas.width = Math.round(viewportWidth * dpr);
+    canvas.height = Math.round(h * dpr);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, viewportWidth, h);
+    if (durationMs <= 0 || contentWidth <= 0) return;
 
-  if (!peaks) {
-    return <div ref={containerRef} className="w-full h-full pointer-events-none" />;
-  }
+    const msPerPx = durationMs / contentWidth;
+    const top = 20; // leave the clip title row readable
+    const bottom = h - 6;
+    const mid = (top + bottom) / 2;
+    const half = (bottom - top) / 2;
+    ctx.fillStyle = '#2dd4bf';
 
-  const duration = Math.max(1000, clip.endMs - clip.startMs);
-  const bucketCount = peaks.min.length;
+    for (const clip of clips) {
+      const url = clip.audioUrl || clip.videoUrl;
+      const entry = url ? buffers[url] : undefined;
+      if (!entry) continue;
+      const data = entry.buf.getChannelData(0);
+      const sr = entry.buf.sampleRate;
+      const x0 = Math.max(0, Math.floor(clip.startMs / msPerPx - scrollLeft));
+      const x1 = Math.min(viewportWidth, Math.ceil(clip.endMs / msPerPx - scrollLeft));
+      for (let x = x0; x < x1; x++) {
+        // Timeline ms for this pixel column -> the clip's source ms.
+        const srcMs = clip.sourceStartMs + (x + scrollLeft) * msPerPx - clip.startMs;
+        const s0 = Math.max(0, Math.floor((srcMs / 1000) * sr));
+        const s1 = Math.min(data.length, Math.max(s0 + 1, Math.floor(((srcMs + msPerPx) / 1000) * sr)));
+        const stride = Math.max(1, Math.floor((s1 - s0) / 400)); // cap work per column when zoomed out
+        let peak = 0;
+        for (let i = s0; i < s1; i += stride) {
+          const v = Math.abs(data[i]);
+          if (v > peak) peak = v;
+        }
+        const bh = Math.max(0.5, Math.min(1, peak * entry.gain) * half);
+        ctx.fillRect(x, mid - bh, 1, bh * 2);
+      }
+    }
+  }, [clips, buffers, durationMs, contentWidth, scrollLeft, viewportWidth]);
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full flex items-end justify-between gap-[1px] px-1 overflow-hidden pointer-events-none"
-    >
-      {Array.from({ length: bucketCount }, (_, i) => {
-        const t = clip.startMs + (i / bucketCount) * duration;
-        const isSilence =
-          !isSilenceCut && silenceSegments.some((sil) => t >= sil.startMs && t <= sil.endMs);
-        const amplitude = Math.max(Math.abs(peaks.min[i]), Math.abs(peaks.max[i]));
-        const heightPercent = isSilence ? 4 : Math.max(4, Math.min(100, amplitude * 100));
-
-        return (
-          <div
-            key={i}
-            className={`w-[1px] shrink-0 transition-all ${
-              isSilence ? 'bg-red-400/35 h-[2px]' : 'bg-[#2dd4bf] opacity-85'
-            }`}
-            style={{ height: `${heightPercent}%` }}
-          />
-        );
-      })}
-    </div>
+    <canvas
+      ref={canvasRef}
+      className="absolute top-0 bottom-0 z-[5] pointer-events-none"
+      style={{ left: scrollLeft, width: viewportWidth, height: '100%' }}
+    />
   );
 };
 
@@ -1060,14 +1145,17 @@ const VideoClipFilmstrip: React.FC<{ clip: Clip }> = ({ clip }) => {
   );
 };
 
-function generateRulerMarkers(durationMs: number) {
-  const stepMs = durationMs > 120000 ? 30000 : 10000;
+/** Ruler ticks at a step that keeps labels ~80px+ apart, only for the visible window. */
+function generateRulerMarkers(durationMs: number, contentWidth: number, scrollLeft: number, viewportWidth: number) {
+  if (durationMs <= 0 || contentWidth <= 0) return [];
+  const pxPerMs = contentWidth / durationMs;
+  const steps = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600].map((sec) => sec * 1000);
+  const stepMs = steps.find((st) => st * pxPerMs >= 80) ?? steps[steps.length - 1];
+  const from = Math.max(0, Math.floor(scrollLeft / pxPerMs / stepMs) * stepMs);
+  const to = Math.min(durationMs, (scrollLeft + viewportWidth) / pxPerMs + stepMs);
   const markers = [];
-  for (let ms = 0; ms <= durationMs; ms += stepMs) {
-    markers.push({
-      ms,
-      label: formatTimecode(ms, false),
-    });
+  for (let ms = from; ms <= to; ms += stepMs) {
+    markers.push({ ms, label: formatTimecode(ms, false) });
   }
   return markers;
 }
