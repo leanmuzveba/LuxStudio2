@@ -99,10 +99,11 @@ export interface SilenceSegment {
   durationMs: number;
 }
 
+/** User-tunable silence detection (the threshold itself is adaptive per file). */
 export interface SilenceSettings {
-  thresholdDb: number;
+  /** Added to the auto threshold: + catches more pauses, - only the quietest. */
+  sensitivityDb: number;
   minSilenceMs: number;
-  paddingMs: number;
 }
 
 export type AspectRatio = '9:16' | '16:9' | '4:3' | '2:1' | '3:4' | '1:1';

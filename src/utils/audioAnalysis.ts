@@ -168,58 +168,92 @@ export interface SilenceRange {
 }
 
 export interface SilenceDetectionOptions {
-  /** RMS level below which a window counts as silent, in dBFS. */
+  /** Fixed RMS threshold in dBFS. Default: adaptive, from this file's own noise floor and speech level. */
   thresholdDb?: number;
-  /** Minimum contiguous silence duration to report, in ms. */
+  /** Shifts the adaptive threshold: positive also catches louder pauses (room noise), negative only near-total silence. */
+  sensitivityDb?: number;
+  /** Minimum pause length to report, in ms. */
   minSilenceMs?: number;
+  /** Sound shorter than this (breath, click, noise spike) inside a pause doesn't end it, in ms. */
+  minSoundMs?: number;
   /** Shrinks each detected range inward so cuts don't clip speech onset/tail. */
   paddingMs?: number;
 }
 
+export interface SilenceDetectionResult {
+  ranges: SilenceRange[];
+  /** The threshold actually used (dBFS), so the UI can show what "auto" picked. */
+  thresholdDb: number;
+}
+
+const WINDOW_MS = 20;
+
+/** Picks a threshold between this recording's pauses and its speech, not a fixed dB that suits only clean studio audio. */
+function adaptiveThresholdDb(windowDb: Float32Array): number {
+  const sorted = Float32Array.from(windowDb).sort();
+  const pct = (p: number) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
+  const floor = pct(0.1); // pauses / room tone
+  const speech = pct(0.95); // loud speech
+  // 45% of the way up from the floor (works down to ~12 dB speech-to-noise),
+  // never within 6 dB of speech, and never more than 35 dB below it
+  // (digital-silence floors read -120 dB).
+  const raw = floor + 0.45 * (speech - floor);
+  return Math.min(speech - 6, Math.max(speech - 35, raw));
+}
+
 /**
- * Scans the ENTIRE decoded buffer for silent stretches using an RMS sliding
- * window — unlike a fixed sample list, this naturally returns as many (or as
- * few) ranges as the actual audio contains, for its full duration.
+ * Scans the whole buffer in 20 ms RMS windows. A pause starts at the first
+ * quiet window and only ends once sound lasts minSoundMs, so room noise
+ * flickering around the threshold or a breath mid-pause doesn't chop one
+ * pause into fragments too short to count (the old behaviour).
  */
 export function detectSilenceRanges(
   buffer: DecodedAudioLike,
   options: SilenceDetectionOptions = {}
-): SilenceRange[] {
-  const { thresholdDb = -40, minSilenceMs = 400, paddingMs = 80 } = options;
-  const sampleRate = buffer.sampleRate;
+): SilenceDetectionResult {
+  const { sensitivityDb = 0, minSilenceMs = 350, minSoundMs = 100, paddingMs = 80 } = options;
   const mono = toMonoSamples(buffer);
-  const windowSize = Math.max(1, Math.round((20 / 1000) * sampleRate)); // 20ms windows
-  const amplitudeThreshold = Math.pow(10, thresholdDb / 20);
+  const windowSize = Math.max(1, Math.round((WINDOW_MS / 1000) * buffer.sampleRate));
   const windowCount = Math.ceil(mono.length / windowSize);
+  if (windowCount === 0) return { ranges: [], thresholdDb: options.thresholdDb ?? -40 };
 
-  const ranges: SilenceRange[] = [];
-  let silenceStartSample: number | null = null;
-
-  const flush = (silenceEndSample: number) => {
-    if (silenceStartSample === null) return;
-    const durationMs = ((silenceEndSample - silenceStartSample) / sampleRate) * 1000;
-    if (durationMs >= minSilenceMs) {
-      const startMs = (silenceStartSample / sampleRate) * 1000 + paddingMs;
-      const endMs = (silenceEndSample / sampleRate) * 1000 - paddingMs;
-      if (endMs > startMs) ranges.push({ startMs, endMs });
-    }
-    silenceStartSample = null;
-  };
-
+  const windowDb = new Float32Array(windowCount);
   for (let w = 0; w < windowCount; w++) {
     const start = w * windowSize;
     const end = Math.min(mono.length, start + windowSize);
     let sumSquares = 0;
     for (let i = start; i < end; i++) sumSquares += mono[i] * mono[i];
-    const rms = Math.sqrt(sumSquares / Math.max(1, end - start));
+    windowDb[w] = 20 * Math.log10(Math.max(1e-6, Math.sqrt(sumSquares / Math.max(1, end - start))));
+  }
 
-    if (rms < amplitudeThreshold) {
-      if (silenceStartSample === null) silenceStartSample = start;
-    } else {
-      flush(start);
+  const thresholdDb = (options.thresholdDb ?? adaptiveThresholdDb(windowDb)) + sensitivityDb;
+  const minSoundWindows = Math.max(1, Math.round(minSoundMs / WINDOW_MS));
+  const windowMs = (windowSize / buffer.sampleRate) * 1000;
+  const ranges: SilenceRange[] = [];
+
+  const flush = (startW: number, endW: number) => {
+    if ((endW - startW) * windowMs < minSilenceMs) return;
+    const startMs = startW * windowMs + paddingMs;
+    const endMs = Math.min(endW * windowMs, (mono.length / buffer.sampleRate) * 1000) - paddingMs;
+    if (endMs > startMs) ranges.push({ startMs, endMs });
+  };
+
+  let silenceStart = -1; // first quiet window of the current pause
+  let soundStart = -1; // first loud window of a (possibly brief) sound inside it
+  for (let w = 0; w < windowCount; w++) {
+    if (windowDb[w] < thresholdDb) {
+      if (silenceStart < 0) silenceStart = w;
+      soundStart = -1;
+    } else if (silenceStart >= 0) {
+      if (soundStart < 0) soundStart = w;
+      if (w - soundStart + 1 >= minSoundWindows) {
+        flush(silenceStart, soundStart);
+        silenceStart = -1;
+        soundStart = -1;
+      }
     }
   }
-  flush(mono.length);
+  if (silenceStart >= 0) flush(silenceStart, soundStart >= 0 ? soundStart : windowCount);
 
-  return ranges;
+  return { ranges, thresholdDb };
 }

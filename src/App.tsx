@@ -13,6 +13,7 @@ import {
   Track,
   Clip,
   SilenceSegment,
+  SilenceSettings,
   CaptionSegment,
   CaptionStyle,
   AIClipCandidate,
@@ -22,7 +23,7 @@ import {
   VideoFraming,
 } from './types';
 import { DEFAULT_CHURCH_BRANDING, DEFAULT_CAPTION_STYLES } from './defaults';
-import { getDecodedAudio, detectSilenceRanges } from './utils/audioAnalysis';
+import { getDecodedAudio, detectSilenceRanges, DecodedAudioLike } from './utils/audioAnalysis';
 import { removeRangesFromTracks, removeRangesFromTimedItems } from './utils/timelineOps';
 
 const tracksDuration = (tracks: Track[]) =>
@@ -71,23 +72,42 @@ export function App() {
   // duration. Failures are surfaced on the Auto Cut button with a Retry.
   const [silenceDetectionError, setSilenceDetectionError] = useState<string | null>(null);
   const lastDetectionUrlRef = useRef<string | null>(null);
+  // Decoded audio is kept so tweaking sensitivity re-runs detection instantly, without re-uploading.
+  const decodedAudioRef = useRef<DecodedAudioLike | null>(null);
+  const [silenceSettings, setSilenceSettings] = useState<SilenceSettings>({ sensitivityDb: 0, minSilenceMs: 350 });
+  const silenceSettingsRef = useRef(silenceSettings);
+  const [silenceThresholdDb, setSilenceThresholdDb] = useState<number | null>(null);
+
+  const applySilenceDetection = (buffer: DecodedAudioLike, settings: SilenceSettings) => {
+    const { ranges, thresholdDb } = detectSilenceRanges(buffer, settings);
+    setSilenceThresholdDb(thresholdDb);
+    setSilenceSegments(
+      ranges.map((r, i) => ({
+        id: `sil-${i}-${Math.round(r.startMs)}`,
+        startMs: r.startMs,
+        endMs: r.endMs,
+        durationMs: r.endMs - r.startMs,
+      }))
+    );
+  };
+
+  const handleSilenceSettingsChange = (next: SilenceSettings) => {
+    setSilenceSettings(next);
+    silenceSettingsRef.current = next;
+    // Detected ranges are in original-media time, so only re-detect before a cut is applied.
+    if (decodedAudioRef.current && !isSilenceCut) applySilenceDetection(decodedAudioRef.current, next);
+  };
   const runSilenceDetection = async (sourceUrl: string) => {
     lastDetectionUrlRef.current = sourceUrl;
     setIsDetectingSilences(true);
     setSilenceDetectionError(null);
     setSilenceDetectionProgress(0);
+    decodedAudioRef.current = null;
     try {
       const buffer = await getDecodedAudio(sourceUrl, setSilenceDetectionProgress);
       if (lastDetectionUrlRef.current !== sourceUrl) return; // superseded by a newer file
-      const ranges = detectSilenceRanges(buffer);
-      setSilenceSegments(
-        ranges.map((r, i) => ({
-          id: `sil-${i}-${Math.round(r.startMs)}`,
-          startMs: r.startMs,
-          endMs: r.endMs,
-          durationMs: r.endMs - r.startMs,
-        }))
-      );
+      decodedAudioRef.current = buffer;
+      applySilenceDetection(buffer, silenceSettingsRef.current);
     } catch (e) {
       if (lastDetectionUrlRef.current !== sourceUrl) return;
       console.warn('Silence detection failed:', e);
@@ -475,6 +495,8 @@ export function App() {
     setSilenceSegments([]);
     setSilenceDetectionError(null);
     lastDetectionUrlRef.current = null;
+    decodedAudioRef.current = null;
+    setSilenceThresholdDb(null);
     setIsDetectingSilences(false);
     setIsSilenceCut(false);
     setAiClipCandidates([]);
@@ -659,6 +681,9 @@ export function App() {
                 onAutoCutSilences={handleAutoCutSilences}
                 onRestoreSilences={handleRestoreSilences}
                 silenceDetectionError={silenceDetectionError}
+                silenceSettings={silenceSettings}
+                onSilenceSettingsChange={handleSilenceSettingsChange}
+                silenceThresholdDb={silenceThresholdDb}
                 onRetrySilenceDetection={() => {
                   if (lastDetectionUrlRef.current) void runSilenceDetection(lastDetectionUrlRef.current);
                 }}

@@ -13,6 +13,7 @@ import {
   Check,
   Undo2,
   Wand2,
+  SlidersHorizontal,
   Split,
   Plus,
   Film,
@@ -21,7 +22,7 @@ import {
   Upload,
   MousePointer2,
 } from 'lucide-react';
-import { Track, Clip, SilenceSegment, CaptionSegment } from '../types';
+import { Track, Clip, SilenceSegment, SilenceSettings, CaptionSegment } from '../types';
 import { formatTimecode } from '../utils/formatters';
 import { splitTracksAtTime } from '../utils/timelineOps';
 import { getDecodedAudio, computeWaveformPeaks } from '../utils/audioAnalysis';
@@ -42,6 +43,9 @@ interface TimelineEditorProps {
   isDetectingSilences?: boolean;
   silenceDetectionProgress?: number;
   silenceDetectionError?: string | null;
+  silenceSettings: SilenceSettings;
+  onSilenceSettingsChange: (settings: SilenceSettings) => void;
+  silenceThresholdDb: number | null;
   onRetrySilenceDetection?: () => void;
   onAutoCutSilences: () => void;
   onRestoreSilences: () => void;
@@ -65,6 +69,9 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   isDetectingSilences = false,
   silenceDetectionProgress = 0,
   silenceDetectionError = null,
+  silenceSettings,
+  onSilenceSettingsChange,
+  silenceThresholdDb,
   onRetrySilenceDetection,
   onAutoCutSilences,
   onRestoreSilences,
@@ -85,6 +92,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   const videoFileInputRef = useRef<HTMLInputElement | null>(null);
   const audioFileInputRef = useRef<HTMLInputElement | null>(null);
   const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
+  const [showSilenceSettings, setShowSilenceSettings] = useState<boolean>(false);
 
   // Drag handler for track headers width
   const handleStartDragHeader = (e: React.MouseEvent) => {
@@ -419,7 +427,80 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                   : `Auto Cut Silences (${silenceSegments.length} detected)`}
               </span>
             </button>
-          ) : (
+          ) : null}
+          {!isSilenceCut && (
+            <div className="relative">
+              <button
+                id="btn-silence-settings"
+                onClick={() => setShowSilenceSettings((v) => !v)}
+                title="Silence detection settings"
+                aria-expanded={showSilenceSettings}
+                className={`p-1.5 border transition-colors ${
+                  showSilenceSettings
+                    ? 'bg-[#FCA311]/20 text-[#FCA311] border-[#FCA311]/50'
+                    : 'bg-white/5 text-gray-300 border-white/10 hover:text-white'
+                }`}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+              </button>
+              {showSilenceSettings && (
+                <div
+                  id="silence-settings-popover"
+                  className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 w-64 p-3 bg-[#0b1222] border border-white/15 shadow-xl text-[11px] text-gray-300 space-y-3"
+                >
+                  <label className="block">
+                    <div className="flex justify-between mb-1">
+                      <span className="font-semibold text-white">Sensitivity</span>
+                      <span className="font-mono">
+                        {silenceSettings.sensitivityDb > 0 ? '+' : ''}
+                        {silenceSettings.sensitivityDb} dB
+                      </span>
+                    </div>
+                    <input
+                      id="input-silence-sensitivity"
+                      type="range"
+                      min={-15}
+                      max={15}
+                      step={1}
+                      value={silenceSettings.sensitivityDb}
+                      onChange={(e) =>
+                        onSilenceSettingsChange({ ...silenceSettings, sensitivityDb: Number(e.target.value) })
+                      }
+                      className="w-full h-1 accent-[#FCA311] cursor-pointer"
+                    />
+                    <div className="flex justify-between text-[9px] text-gray-500 mt-0.5">
+                      <span>Only total silence</span>
+                      <span>Catch more pauses</span>
+                    </div>
+                  </label>
+                  <label className="block">
+                    <div className="flex justify-between mb-1">
+                      <span className="font-semibold text-white">Minimum pause</span>
+                      <span className="font-mono">{(silenceSettings.minSilenceMs / 1000).toFixed(2)} s</span>
+                    </div>
+                    <input
+                      id="input-silence-min-pause"
+                      type="range"
+                      min={150}
+                      max={2000}
+                      step={50}
+                      value={silenceSettings.minSilenceMs}
+                      onChange={(e) =>
+                        onSilenceSettingsChange({ ...silenceSettings, minSilenceMs: Number(e.target.value) })
+                      }
+                      className="w-full h-1 accent-[#FCA311] cursor-pointer"
+                    />
+                  </label>
+                  <p className="text-[10px] text-gray-500 leading-snug">
+                    {silenceThresholdDb !== null
+                      ? `Anything quieter than ${silenceThresholdDb.toFixed(0)} dB counts as silence (auto-set from this recording's noise and speech levels). ${silenceSegments.length} pauses found.`
+                      : 'Upload a video to detect its pauses.'}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          {isSilenceCut && (
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-[11px] font-semibold flex items-center gap-1">
                 <Check className="w-3 h-3 text-emerald-400" />
