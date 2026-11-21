@@ -57,14 +57,25 @@ mediaRouter.put(
   }
 );
 
-// Mono 32-bit float PCM at AUDIO_SAMPLE_RATE, streamed straight from ffmpeg.
+// Mono 32-bit float PCM at AUDIO_SAMPLE_RATE. ffmpeg writes it to a file
+// next to the upload once; it's then served as a plain file. (Streaming
+// ffmpeg's stdout as a chunked response was ~4x slower to download in Chrome
+// than with a Content-Length, and a failure could only truncate the stream.)
 mediaRouter.get("/:id/audio", (req, res) => {
   const file = mediaPath(req.params.id);
   if (!file || !fs.existsSync(file)) return res.status(404).json({ error: "Media not found" });
+  const audioFile = `${file}.audio.f32`;
+  const send = () =>
+    res.sendFile(audioFile, {
+      headers: { "Content-Type": "application/octet-stream", "X-Sample-Rate": String(AUDIO_SAMPLE_RATE) },
+    });
+  if (fs.existsSync(audioFile)) return send();
 
+  // Unique temp name + atomic rename: concurrent requests can't serve a half-written file.
+  const tmp = `${audioFile}.${process.pid}.${Date.now()}.tmp`;
   const ff = spawn("ffmpeg", [
-    "-v", "error", "-i", file,
-    "-vn", "-ac", "1", "-ar", String(AUDIO_SAMPLE_RATE), "-f", "f32le", "pipe:1",
+    "-v", "error", "-y", "-i", file,
+    "-vn", "-ac", "1", "-ar", String(AUDIO_SAMPLE_RATE), "-f", "f32le", tmp,
   ]);
   let stderr = "";
   ff.stderr.on("data", (d) => (stderr += d));
@@ -72,20 +83,15 @@ mediaRouter.get("/:id/audio", (req, res) => {
     // ffmpeg missing from PATH — the one failure worth a clear message.
     if (!res.headersSent) res.status(500).json({ error: `ffmpeg unavailable: ${err.message}` });
   });
-
-  res.setHeader("Content-Type", "application/octet-stream");
-  res.setHeader("X-Sample-Rate", String(AUDIO_SAMPLE_RATE));
-  ff.stdout.pipe(res);
-  ff.on("close", (code, signal) => {
-    if (code !== 0 && !signal) {
-      console.error(`ffmpeg audio extraction failed for ${req.params.id}:`, stderr.trim());
-      // Headers may already be sent; destroying makes the client see a failed
-      // fetch rather than a silently truncated waveform.
-      res.destroy();
+  ff.on("close", (code) => {
+    if (code === 0) {
+      fs.renameSync(tmp, audioFile);
+      return send();
     }
-  });
-  // Client went away mid-stream: stop decoding.
-  res.on("close", () => {
-    if (ff.exitCode === null) ff.kill("SIGKILL");
+    fs.rmSync(tmp, { force: true });
+    console.error(`ffmpeg audio extraction failed for ${req.params.id}:`, stderr.trim());
+    if (!res.headersSent) {
+      res.status(500).json({ error: `Could not extract audio: ${stderr.trim().split("\n").pop() || `ffmpeg exit ${code}`}` });
+    }
   });
 });
