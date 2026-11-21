@@ -252,9 +252,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           playsInline
           muted={isMuted}
           className="hidden"
-          onLoadedMetadata={(e) =>
-            setVideoSize({ w: e.currentTarget.videoWidth, h: e.currentTarget.videoHeight })
-          }
+          onLoadedMetadata={(e) => {
+            setVideoSize({ w: e.currentTarget.videoWidth, h: e.currentTarget.videoHeight });
+            // A never-played hidden video has no decoded frame to draw, so the
+            // preview stayed black until play/scrub; a seek forces one.
+            e.currentTarget.currentTime = Math.max(0.001, currentTimeMs / 1000);
+          }}
         />
       )}
 
