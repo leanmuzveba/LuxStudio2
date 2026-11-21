@@ -14,8 +14,8 @@ import {
   Sparkles,
   Film,
 } from 'lucide-react';
-import { AspectRatio, CaptionSegment, CaptionStyle } from '../types';
-import { drawVideoFrame } from '../utils/canvasRenderer';
+import { AspectRatio, CaptionSegment, CaptionStyle, VideoFraming } from '../types';
+import { drawVideoFrame, framedRect } from '../utils/canvasRenderer';
 import { formatTimecode } from '../utils/formatters';
 
 interface VideoPlayerProps {
@@ -29,7 +29,11 @@ interface VideoPlayerProps {
   activeCaption: CaptionSegment | null;
   captionStyle: CaptionStyle;
   customVideoUrl?: string | null;
+  framing: VideoFraming;
+  onFramingChange: (framing: VideoFraming) => void;
 }
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   currentTimeMs,
@@ -42,6 +46,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   activeCaption,
   captionStyle,
   customVideoUrl,
+  framing,
+  onFramingChange,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -51,6 +57,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [volume, setVolume] = useState<number>(1);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [videoSize, setVideoSize] = useState<{ w: number; h: number } | null>(null);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -94,6 +101,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             activeCaption,
             captionStyle,
             customVideoElement: videoRef.current,
+            framing,
           });
         }
       }
@@ -102,7 +110,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, [currentTimeMs, aspectRatio, activeCaption, captionStyle]);
+  }, [currentTimeMs, aspectRatio, activeCaption, captionStyle, framing]);
 
   // Synchronize custom video element if uploaded
   useEffect(() => {
@@ -191,6 +199,45 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const canvasWidth = ratioConfig.width;
   const canvasHeight = ratioConfig.height;
 
+  // --- Framing (reframe a 16:9 source for 9:16 etc. without distorting it) ---
+  // Zoom that makes the video exactly cover the frame (no bars): the "Fill" preset.
+  const fillZoom = videoSize
+    ? Math.max(canvasWidth / videoSize.w, canvasHeight / videoSize.h) /
+      Math.min(canvasWidth / videoSize.w, canvasHeight / videoSize.h)
+    : 1;
+  const maxZoom = Math.max(4, fillZoom * 3);
+  const setZoom = (zoom: number) => onFramingChange({ ...framing, zoom: clamp(zoom, 1, maxZoom) });
+
+  // Drag the picture to pan; a press without movement still toggles play.
+  const dragRef = useRef<{ x: number; y: number; start: VideoFraming; moved: boolean } | null>(null);
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { x: e.clientX, y: e.clientY, start: framing, moved: false };
+  };
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const d = dragRef.current;
+    if (!d || !videoSize) return;
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    if (!d.moved && Math.hypot(dx, dy) < 4) return;
+    d.moved = true;
+    // Screen px -> canvas px, then into the -1..1 pan range of the overflow.
+    const k = canvasWidth / e.currentTarget.getBoundingClientRect().width;
+    const r = framedRect(videoSize.w, videoSize.h, canvasWidth, canvasHeight, d.start);
+    const overX = r.w - canvasWidth;
+    const overY = r.h - canvasHeight;
+    onFramingChange({
+      ...d.start,
+      x: overX > 0 ? clamp(d.start.x - (2 * dx * k) / overX, -1, 1) : 0,
+      y: overY > 0 ? clamp(d.start.y - (2 * dy * k) / overY, -1, 1) : 0,
+    });
+  };
+  const handlePointerUp = () => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    if (d && !d.moved) onTogglePlay();
+  };
+
   return (
     <div
       ref={containerRef}
@@ -205,6 +252,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           playsInline
           muted={isMuted}
           className="hidden"
+          onLoadedMetadata={(e) =>
+            setVideoSize({ w: e.currentTarget.videoWidth, h: e.currentTarget.videoHeight })
+          }
         />
       )}
 
@@ -228,9 +278,54 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             id="preview-canvas"
             width={canvasWidth}
             height={canvasHeight}
-            className="w-full h-full object-contain bg-black cursor-pointer"
-            onClick={onTogglePlay}
+            className={`w-full h-full object-contain bg-black touch-none ${
+              videoSize ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+            }`}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onWheel={(e) => {
+              if (videoSize) setZoom(framing.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+            }}
+            title={videoSize ? 'Drag to reposition, scroll to zoom, click to play/pause' : undefined}
           />
+
+          {/* Framing toolbar: keep the source's shape, zoom/crop it into this ratio */}
+          {videoSize && (
+            <div
+              id="framing-toolbar"
+              className="absolute top-1.5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 bg-black/70 backdrop-blur px-2 py-1 border border-white/10 text-[10px] font-semibold text-gray-200"
+            >
+              <button
+                id="btn-framing-fit"
+                onClick={() => onFramingChange({ zoom: 1, x: 0, y: 0 })}
+                title="Show the whole video (keeps its original shape)"
+                className={`px-1.5 py-0.5 ${framing.zoom === 1 ? 'bg-[#FCA311] text-black' : 'hover:bg-white/10'}`}
+              >
+                Fit
+              </button>
+              <button
+                id="btn-framing-fill"
+                onClick={() => onFramingChange({ ...framing, zoom: fillZoom })}
+                title="Zoom until the video fills the frame, then drag to choose the crop"
+                className={`px-1.5 py-0.5 ${Math.abs(framing.zoom - fillZoom) < 0.01 ? 'bg-[#FCA311] text-black' : 'hover:bg-white/10'}`}
+              >
+                Fill
+              </button>
+              <input
+                id="input-framing-zoom"
+                type="range"
+                min={1}
+                max={maxZoom}
+                step={0.01}
+                value={framing.zoom}
+                onChange={(e) => setZoom(parseFloat(e.target.value))}
+                className="w-20 h-1 accent-[#FCA311] cursor-pointer"
+                title="Zoom / crop"
+              />
+              <span className="font-mono w-8 text-right">{framing.zoom.toFixed(1)}x</span>
+            </div>
+          )}
 
           {/* Play overlay button when paused - smaller, floating */}
           {!isPlaying && (

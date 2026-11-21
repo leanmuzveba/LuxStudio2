@@ -19,6 +19,7 @@ import {
   TeachingSummary,
   ChurchBranding,
   AspectRatio,
+  VideoFraming,
 } from './types';
 import { DEFAULT_CHURCH_BRANDING, DEFAULT_CAPTION_STYLES } from './defaults';
 import { getDecodedAudio, detectSilenceRanges } from './utils/audioAnalysis';
@@ -35,6 +36,8 @@ const EMPTY_TRACKS: Track[] = [
   { id: 'track-audio', type: 'audio', name: 'Vocal Audio Track', muted: false, orderIndex: 1, clips: [] },
 ];
 
+const DEFAULT_FRAMING: VideoFraming = { zoom: 1, x: 0, y: 0 };
+
 const EMPTY_TEACHING_SUMMARY: TeachingSummary = { title: '', summary: '', hashtags: [] };
 
 export function App() {
@@ -46,6 +49,9 @@ export function App() {
   const [durationMs, setDurationMs] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16');
+  // Each output ratio remembers its own framing of the source (9:16 crop vs 16:9 fit).
+  const [framingByRatio, setFramingByRatio] = useState<Partial<Record<AspectRatio, VideoFraming>>>({});
+  const framing = framingByRatio[aspectRatio] ?? DEFAULT_FRAMING;
   const [autoMergeEnabled, setAutoMergeEnabled] = useState<boolean>(true);
 
   // Tracks and Undo/Redo history
@@ -459,6 +465,7 @@ export function App() {
   const handleClearProject = () => {
     if (customVideoUrl) URL.revokeObjectURL(customVideoUrl);
     setCustomVideoUrl(null);
+    setFramingByRatio({});
     setDurationMs(0);
     setCurrentTimeMs(0);
     setIsPlaying(false);
@@ -524,6 +531,8 @@ export function App() {
                     activeCaption={activeCaption}
                     captionStyle={captionStyle}
                     customVideoUrl={customVideoUrl}
+                    framing={framing}
+                    onFramingChange={(f) => setFramingByRatio((prev) => ({ ...prev, [aspectRatio]: f }))}
                   />
                 </div>
 

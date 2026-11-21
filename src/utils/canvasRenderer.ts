@@ -1,4 +1,4 @@
-import { AspectRatio, CaptionSegment, CaptionStyle } from '../types';
+import { AspectRatio, CaptionSegment, CaptionStyle, VideoFraming } from '../types';
 
 interface RenderFrameOptions {
   ctx: CanvasRenderingContext2D;
@@ -9,6 +9,21 @@ interface RenderFrameOptions {
   activeCaption: CaptionSegment | null;
   captionStyle: CaptionStyle;
   customVideoElement?: HTMLVideoElement | null;
+  framing?: VideoFraming;
+}
+
+/** Where the video lands in a w×h frame: aspect preserved, zoomed from "fit", panned within its overflow. */
+export function framedRect(vw: number, vh: number, w: number, h: number, f: VideoFraming) {
+  const scale = Math.min(w / vw, h / vh) * f.zoom;
+  const dw = vw * scale;
+  const dh = vh * scale;
+  // Overflow is split evenly at x=0; x=-1 shows the left edge, x=1 the right.
+  return {
+    x: (w - dw) / 2 - (f.x * Math.max(0, dw - w)) / 2,
+    y: (h - dh) / 2 - (f.y * Math.max(0, dh - h)) / 2,
+    w: dw,
+    h: dh,
+  };
 }
 
 export function drawVideoFrame({
@@ -20,12 +35,16 @@ export function drawVideoFrame({
   activeCaption,
   captionStyle,
   customVideoElement,
+  framing = { zoom: 1, x: 0, y: 0 },
 }: RenderFrameOptions) {
   // If user uploaded their own video and it has a decoded frame ready, draw it
   // — regardless of play/pause state, so the canvas always shows the frame at
   // the current scrub/pause position instead of falling back to the placeholder.
-  if (customVideoElement && customVideoElement.readyState >= 2) {
-    ctx.drawImage(customVideoElement, 0, 0, width, height);
+  if (customVideoElement && customVideoElement.readyState >= 2 && customVideoElement.videoWidth > 0) {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, width, height);
+    const r = framedRect(customVideoElement.videoWidth, customVideoElement.videoHeight, width, height, framing);
+    ctx.drawImage(customVideoElement, r.x, r.y, r.w, r.h);
   } else {
     drawEmptyState(ctx, width, height);
   }

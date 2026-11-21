@@ -107,6 +107,17 @@ export interface SilenceSettings {
 
 export type AspectRatio = '9:16' | '16:9' | '4:3' | '2:1' | '3:4' | '1:1';
 
+/**
+ * How the source video sits inside the output frame. The video always keeps
+ * its own aspect ratio: zoom 1 = whole video fits (letterboxed); larger zoom
+ * crops in. x/y pan the crop across the overflow, -1 (left/top edge) .. 1.
+ */
+export interface VideoFraming {
+  zoom: number;
+  x: number;
+  y: number;
+}
+
 export interface ExportSettings {
   format: 'mp4' | 'webm';
   aspectRatio: AspectRatio;
