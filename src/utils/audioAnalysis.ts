@@ -2,7 +2,7 @@
 // track) and derives waveform peaks / silence ranges from the actual PCM
 // samples, so the timeline reflects the real media instead of a simulation.
 
-/** Minimal shape both a real AudioBuffer and our playback-captured fallback satisfy. */
+/** Mono PCM decoded server-side by ffmpeg (shape mirrors the bits of AudioBuffer we use). */
 export interface DecodedAudioLike {
   sampleRate: number;
   length: number;
@@ -10,179 +10,60 @@ export interface DecodedAudioLike {
   getChannelData(channel: number): Float32Array;
 }
 
-let sharedContext: AudioContext | null = null;
+const CHUNK_BYTES = 8 * 1024 * 1024; // well under the server's 16 MB per-request cap
+const uploads = new Map<string, Promise<string>>();
 
-function getAudioContext(): AudioContext {
-  if (!sharedContext) {
-    const Ctor = window.AudioContext || (window as any).webkitAudioContext;
-    sharedContext = new Ctor();
-  }
-  return sharedContext;
+/**
+ * Uploads the media behind a blob URL to the server in sequential chunks and
+ * resolves to its server media id. Cached per URL, so waveform rendering,
+ * silence detection (and later export/transcription) share one upload.
+ * Progress is reported 0..1 over the bytes sent.
+ */
+export function uploadMedia(url: string, onProgress?: (ratio: number) => void): Promise<string> {
+  const cached = uploads.get(url);
+  if (cached) return cached;
+
+  const promise = (async () => {
+    // Fetching a blob: URL hands back the original File/Blob without copying it.
+    const blob = await (await fetch(url)).blob();
+    const id = crypto.randomUUID();
+    for (let offset = 0; offset < blob.size; offset += CHUNK_BYTES) {
+      const res = await fetch(`/api/media/${id}?offset=${offset}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: blob.slice(offset, offset + CHUNK_BYTES),
+      });
+      if (!res.ok) throw new Error(`Upload failed at byte ${offset}: ${res.status} ${await res.text()}`);
+      onProgress?.(Math.min(1, (offset + CHUNK_BYTES) / blob.size));
+    }
+    return id;
+  })();
+
+  uploads.set(url, promise);
+  promise.catch(() => uploads.delete(url));
+  return promise;
 }
 
 /**
- * Loads the file into a real <video> element (works for plain audio files
- * too) and taps its actual decoded audio via Web Audio as it plays — the
- * same decoding pipeline the visible player already uses successfully, so
- * there's no separate "extraction" step or container-format guessing.
- *
- * The element is intentionally NOT muted: muting a media element also zeroes
- * the PCM that reaches a MediaElementAudioSourceNode in some browsers (not
- * just its own speaker output), which produces silent captured audio even
- * though the file audibly has sound. Instead, output is silenced by routing
- * through a zero-gain node before the destination.
- *
- * Plays at normal (1x) speed so there's no time-compression math to get
- * wrong — it just takes as long as the file's real duration, with progress
- * (0..1) reported via onProgress as it goes.
+ * Server-side ffmpeg extracts mono PCM from any container/codec it supports,
+ * in seconds even for multi-hour files. Upload is ~90% of the progress bar;
+ * extraction is reported as the final stretch.
  */
-function captureAudioViaPlayback(
-  url: string,
-  onProgress?: (ratio: number) => void
-): Promise<DecodedAudioLike> {
-  return new Promise((resolve, reject) => {
-    const captureSampleRate = 4000; // plenty for waveform display + silence detection, keeps memory small
-    // Speeds up long files (this app's target is 1-2hr sermons — at 1x that's
-    // a 1-2hr wait). Web Audio always delivers ctx.sampleRate samples per
-    // WALL-CLOCK second regardless of playbackRate; at playbackRate=R, each
-    // wall-clock second covers R seconds of ORIGINAL content, so the stream
-    // effectively represents (ctx.sampleRate / R) content-samples/sec. The
-    // decimateStep below divides by R again to compensate, so the resolved
-    // buffer's declared sampleRate (captureSampleRate) stays correct — this
-    // is the piece that was wrong in an earlier version of this function.
-    const playbackRate = 8;
-
-    const video = document.createElement('video');
-    video.src = url;
-    video.preload = 'auto';
-    video.playsInline = true;
-    // Not .muted (that zeroes the Web Audio-captured PCM too, see above) —
-    // volume 0 keeps it silent without that side effect, and browsers treat
-    // volume-0 playback the same as muted for the autoplay-without-a-fresh-
-    // user-gesture allowance.
-    video.volume = 0;
-    // Some browsers throttle/suspend media elements that are never attached
-    // to the document, especially over a long real-duration playback — keep
-    // it in the DOM (invisible) rather than detached.
-    video.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px;';
-    document.body.appendChild(video);
-
-    let ctx: AudioContext | null = null;
-    let source: MediaElementAudioSourceNode | null = null;
-    // ScriptProcessorNode is deprecated but universally supported and avoids
-    // needing a separate AudioWorklet module file just for this.
-    let processor: ScriptProcessorNode | null = null;
-    let outBuffer = new Float32Array(0);
-    let writeIndex = 0;
-    let settled = false;
-    let watchdog: number | undefined;
-
-    const cleanup = () => {
-      window.clearTimeout(watchdog);
-      try { processor?.disconnect(); } catch {}
-      try { source?.disconnect(); } catch {}
-      video.pause();
-      video.removeAttribute('src');
-      video.load();
-      video.remove();
-    };
-
-    const fail = (err: unknown) => {
-      if (settled) return;
-      settled = true;
-      console.warn('[audioAnalysis] capture failed for', url, ':', err);
-      cleanup();
-      reject(err instanceof Error ? err : new Error(String(err)));
-    };
-
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      const finalData = outBuffer.slice(0, writeIndex);
-      console.log(`[audioAnalysis] capture finished for ${url}: ${finalData.length} samples`);
-      cleanup();
-      onProgress?.(1);
-      resolve({
-        sampleRate: captureSampleRate,
-        length: finalData.length,
-        numberOfChannels: 1,
-        getChannelData: () => finalData,
-      });
-    };
-
-    const ensureCapacity = (needed: number) => {
-      if (needed <= outBuffer.length) return;
-      const grown = new Float32Array(Math.max(needed, (outBuffer.length || 1024) * 2));
-      grown.set(outBuffer);
-      outBuffer = grown;
-    };
-
-    video.addEventListener('error', () =>
-      fail(new Error(`Failed to load media for audio analysis (code ${video.error?.code}: ${video.error?.message})`))
-    );
-
-    video.addEventListener('loadedmetadata', () => {
-      // duration can be Infinity/NaN for some recorded/exported files until
-      // played through — guard against that instead of allocating a bogus
-      // (or infinite) buffer size.
-      const rawDuration = video.duration;
-      const durationSec = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 0;
-      console.log(`[audioAnalysis] loaded metadata for ${url}: duration=${durationSec || 'unknown'}`);
-      outBuffer = new Float32Array(durationSec > 0 ? Math.max(1, Math.ceil(durationSec * captureSampleRate)) : 1024);
-
-      // Guards against a silent infinite hang (e.g. playback stalls without
-      // ever firing an error) — fail loudly instead of leaving the caller
-      // waiting forever with no feedback.
-      watchdog = window.setTimeout(
-        () => fail(new Error(`Audio capture timed out (stuck at ${(video.currentTime || 0).toFixed(1)}s of ${durationSec.toFixed(1)}s)`)),
-        Math.max(30000, (durationSec / playbackRate) * 3000)
-      );
-
-      try {
-        ctx = getAudioContext();
-        const decimateStep = Math.max(1, Math.round(ctx.sampleRate / (playbackRate * captureSampleRate)));
-        source = ctx.createMediaElementSource(video);
-        processor = ctx.createScriptProcessor(4096, 1, 1);
-
-        let decimateAccumulator = 0;
-        let decimateCount = 0;
-
-        processor.onaudioprocess = (e) => {
-          const input = e.inputBuffer.getChannelData(0);
-          for (let i = 0; i < input.length; i++) {
-            const sample = input[i];
-            if (Math.abs(sample) > Math.abs(decimateAccumulator)) decimateAccumulator = sample;
-            decimateCount++;
-            if (decimateCount >= decimateStep) {
-              ensureCapacity(writeIndex + 1);
-              outBuffer[writeIndex++] = decimateAccumulator;
-              decimateAccumulator = 0;
-              decimateCount = 0;
-            }
-          }
-          if (durationSec > 0) onProgress?.(Math.min(0.99, video.currentTime / durationSec));
-        };
-
-        // A ScriptProcessorNode only pulls audio if its output reaches the
-        // destination — route through a zero-gain node so nothing is audible.
-        const silentGain = ctx.createGain();
-        silentGain.gain.value = 0;
-        source.connect(processor);
-        processor.connect(silentGain);
-        silentGain.connect(ctx.destination);
-      } catch (err) {
-        fail(err);
-        return;
-      }
-
-      video.addEventListener('ended', finish);
-      video.playbackRate = playbackRate;
-      video
-        .play()
-        .then(() => console.log(`[audioAnalysis] playback started for ${url} at ${playbackRate}x`))
-        .catch(fail);
-    });
-  });
+async function decodeViaServer(url: string, onProgress?: (ratio: number) => void): Promise<DecodedAudioLike> {
+  const id = await uploadMedia(url, (r) => onProgress?.(r * 0.9));
+  const res = await fetch(`/api/media/${id}/audio`);
+  if (!res.ok) throw new Error(`Audio extraction failed: ${res.status} ${await res.text()}`);
+  const sampleRate = Number(res.headers.get('X-Sample-Rate')) || 4000;
+  const bytes = await res.arrayBuffer();
+  // f32le from ffmpeg; trim any partial trailing sample before viewing as floats.
+  const data = new Float32Array(bytes, 0, Math.floor(bytes.byteLength / 4));
+  onProgress?.(1);
+  return {
+    sampleRate,
+    length: data.length,
+    numberOfChannels: 1,
+    getChannelData: () => data,
+  };
 }
 
 const decodeCache = new Map<string, Promise<DecodedAudioLike>>();
@@ -210,7 +91,7 @@ export function getDecodedAudio(
     progressListeners.get(url)!.add(onProgress);
   }
 
-  const promise = captureAudioViaPlayback(url, (ratio) => broadcastProgress(url, ratio));
+  const promise = decodeViaServer(url, (ratio) => broadcastProgress(url, ratio));
 
   decodeCache.set(url, promise);
   promise

@@ -57,17 +57,19 @@ export function App() {
   const [silenceDetectionProgress, setSilenceDetectionProgress] = useState<number>(0);
   const originalTracksRef = useRef<Track[]>(EMPTY_TRACKS);
 
-  // Decode the given source's real audio and replace silenceSegments with
-  // whatever silent stretches actually exist across its full duration.
-  // getDecodedAudio tries a fast direct decode first, then transparently
-  // falls back to playing the file through and capturing real samples if
-  // the container can't be decoded directly (reported via progress, since
-  // that fallback takes real time proportional to the file's duration).
+  // Upload the source to the server (ffmpeg extracts its audio there) and
+  // replace silenceSegments with the silent stretches across its full
+  // duration. Failures are surfaced on the Auto Cut button with a Retry.
+  const [silenceDetectionError, setSilenceDetectionError] = useState<string | null>(null);
+  const lastDetectionUrlRef = useRef<string | null>(null);
   const runSilenceDetection = async (sourceUrl: string) => {
+    lastDetectionUrlRef.current = sourceUrl;
     setIsDetectingSilences(true);
+    setSilenceDetectionError(null);
     setSilenceDetectionProgress(0);
     try {
       const buffer = await getDecodedAudio(sourceUrl, setSilenceDetectionProgress);
+      if (lastDetectionUrlRef.current !== sourceUrl) return; // superseded by a newer file
       const ranges = detectSilenceRanges(buffer);
       setSilenceSegments(
         ranges.map((r, i) => ({
@@ -78,11 +80,15 @@ export function App() {
         }))
       );
     } catch (e) {
+      if (lastDetectionUrlRef.current !== sourceUrl) return;
       console.warn('Silence detection failed:', e);
       setSilenceSegments([]);
+      setSilenceDetectionError(e instanceof Error ? e.message : String(e));
     } finally {
-      setIsDetectingSilences(false);
-      setSilenceDetectionProgress(0);
+      if (lastDetectionUrlRef.current === sourceUrl) {
+        setIsDetectingSilences(false);
+        setSilenceDetectionProgress(0);
+      }
     }
   };
 
@@ -448,6 +454,9 @@ export function App() {
     originalTracksRef.current = EMPTY_TRACKS;
     setCaptions([]);
     setSilenceSegments([]);
+    setSilenceDetectionError(null);
+    lastDetectionUrlRef.current = null;
+    setIsDetectingSilences(false);
     setIsSilenceCut(false);
     setAiClipCandidates([]);
     setTeachingSummary(EMPTY_TEACHING_SUMMARY);
@@ -628,6 +637,10 @@ export function App() {
                 silenceDetectionProgress={silenceDetectionProgress}
                 onAutoCutSilences={handleAutoCutSilences}
                 onRestoreSilences={handleRestoreSilences}
+                silenceDetectionError={silenceDetectionError}
+                onRetrySilenceDetection={() => {
+                  if (lastDetectionUrlRef.current) void runSilenceDetection(lastDetectionUrlRef.current);
+                }}
                 captions={captions}
                 onCaptionsChange={setCaptions}
                 autoMergeEnabled={autoMergeEnabled}

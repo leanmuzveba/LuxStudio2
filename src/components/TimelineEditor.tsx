@@ -41,6 +41,8 @@ interface TimelineEditorProps {
   isSilenceCut: boolean;
   isDetectingSilences?: boolean;
   silenceDetectionProgress?: number;
+  silenceDetectionError?: string | null;
+  onRetrySilenceDetection?: () => void;
   onAutoCutSilences: () => void;
   onRestoreSilences: () => void;
   captions: CaptionSegment[];
@@ -62,6 +64,8 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   isSilenceCut,
   isDetectingSilences = false,
   silenceDetectionProgress = 0,
+  silenceDetectionError = null,
+  onRetrySilenceDetection,
   onAutoCutSilences,
   onRestoreSilences,
   captions,
@@ -395,8 +399,9 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
           {!isSilenceCut ? (
             <button
               id="btn-auto-cut-silence"
-              onClick={onAutoCutSilences}
-              disabled={isDetectingSilences || silenceSegments.length === 0}
+              onClick={silenceDetectionError ? onRetrySilenceDetection : onAutoCutSilences}
+              disabled={isDetectingSilences || (!silenceDetectionError && silenceSegments.length === 0)}
+              title={silenceDetectionError ?? undefined}
               className="relative flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-[#FCA311] to-[#f78e05] text-black font-bold shadow-md shadow-[#FCA311]/20 hover:brightness-110 active:scale-95 transition-all disabled:opacity-90 disabled:pointer-events-none overflow-hidden"
             >
               {isDetectingSilences && (
@@ -409,6 +414,8 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
               <span className="relative">
                 {isDetectingSilences
                   ? `Detecting silences… ${Math.round(silenceDetectionProgress * 100)}%`
+                  : silenceDetectionError
+                  ? 'Silence detection failed — Retry'
                   : `Auto Cut Silences (${silenceSegments.length} detected)`}
               </span>
             </button>

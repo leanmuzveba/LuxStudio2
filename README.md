@@ -8,7 +8,7 @@ This is a from-scratch React rewrite of LuxStudio (the original is a Flutter + F
 
 - **Timeline editor** — multi-track (video / audio / captions) timeline with Select and Split tools, merge, delete, zoom (real waveform/frame detail scales with zoom level), scrubbing, and drag-to-resize panels. Splitting or auto-cutting always cuts every track at the same instant, so video and audio stay in sync.
 - **Real waveforms & thumbnails** — the audio track's waveform and the video track's filmstrip are generated from the actual uploaded media, not a simulated shape.
-- **Auto silence removal** — decodes the real uploaded audio and scans its full duration for silent stretches (not a fixed sample count), and can auto-cut them into a "clean speech" edit, with one-click restore.
+- **Auto silence removal** — uploads the file to the server, where ffmpeg extracts its audio (seconds, even for multi-hour sermons), then scans the full duration for silent stretches and can auto-cut them into a "clean speech" edit, with one-click restore.
 - **Captions** — a searchable caption list synced to playback, draggable/resizable directly on the timeline, adjustable per-segment timing/text, and a style panel (font, color, animation, position, badges) with several built-in presets.
 - **Light/dark theme** — a header toggle switches between the default dark navy/gold look and a grey shell with blue accents.
 - **AI Short Clips** — surfaces candidate highlight moments (hook + rationale + virality score) from the sermon, ready to drop into a 9:16 export.
@@ -29,6 +29,8 @@ This is a from-scratch React rewrite of LuxStudio (the original is a Flutter + F
 ```
 LuxStudio2/
 ├── server.ts                     Express server: Vite middleware + /api/gemini/* endpoints
+├── media.ts                      /api/media: chunked upload to disk + ffmpeg audio extraction
+├── Dockerfile                    Container build with ffmpeg, for cloud hosts
 ├── index.html                    HTML shell / fonts / meta tags
 ├── src/
 │   ├── main.tsx                  React entry point
@@ -51,7 +53,7 @@ LuxStudio2/
 │   │   └── LuxLogo.tsx            Brand mark
 │   └── utils/
 │       ├── canvasRenderer.ts      Draws each video frame (or empty state, captions) onto the canvas
-│       ├── audioAnalysis.ts       Decodes real audio; derives waveform peaks and silence ranges
+│       ├── audioAnalysis.ts       Uploads media, fetches server-decoded audio; waveform peaks + silence ranges
 │       ├── videoThumbnails.ts     Extracts real frame thumbnails from an uploaded video
 │       ├── timelineOps.ts         Multi-track split/remove-range operations that keep tracks in sync
 │       └── formatters.ts         Timecode formatting helpers
@@ -60,7 +62,7 @@ LuxStudio2/
 
 ## Getting started
 
-**Prerequisites:** Node.js
+**Prerequisites:** Node.js and [ffmpeg](https://ffmpeg.org/) on `PATH` (the server uses it for audio extraction).
 
 ```bash
 npm install
@@ -70,6 +72,10 @@ npm run dev
 The app runs at **http://localhost:3000**.
 
 AI features (Teaching Summary, AI Short Clips) work out of the box using built-in fallback content. To use live Gemini generation instead, set `GEMINI_API_KEY` in a `.env.local` file at the project root.
+
+## Deploying
+
+Build the `Dockerfile` on any container host (Render, Cloud Run, Fly, ...). It installs ffmpeg and honours the host's `PORT`. Optional env: `GEMINI_API_KEY`, `MEDIA_DIR`, `MAX_UPLOAD_BYTES` (default 8 GB). Uploads go in 8 MB chunks, so per-request body limits (e.g. Cloud Run's 32 MB) aren't a problem.
 
 ## Scripts
 
@@ -86,4 +92,5 @@ AI features (Teaching Summary, AI Short Clips) work out of the box using built-i
 - Export is simulated — it does not actually transcode or render a video file server-side.
 - There's no backend persistence: refreshing the page resets the project to empty.
 - There's no speech-to-text backend wired up yet, so "Auto-Transcribe" and the AI Short Clips / Teaching Summary generators only have real content to work with once captions exist — they do nothing rather than fabricate placeholder text.
-- Waveform decoding and silence detection use the Web Audio API's `decodeAudioData` directly on the uploaded file (no server-side transcoding), so they work reliably for standard web-compatible audio/video codecs but may fail silently on more exotic ones.
+- Uploaded media is stored in a temp directory on the server (`MEDIA_DIR`, swept after 24h) and served by unguessable id with no auth — fine for a single instance, but it needs object storage + auth before multi-user production use.
+- The preview player plays the original file, not the edited timeline, so cuts aren't reflected in playback yet.
