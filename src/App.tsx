@@ -23,7 +23,7 @@ import {
   VideoFraming,
 } from './types';
 import { DEFAULT_CHURCH_BRANDING, DEFAULT_CAPTION_STYLES } from './defaults';
-import { getDecodedAudio, detectSilenceRanges, DecodedAudioLike } from './utils/audioAnalysis';
+import { getDecodedAudio, detectSilenceRanges, DecodedAudioLike, uploadMedia } from './utils/audioAnalysis';
 import { removeRangesFromTracks, removeRangesFromTimedItems } from './utils/timelineOps';
 
 const tracksDuration = (tracks: Track[]) =>
@@ -305,15 +305,37 @@ export function App() {
 
   // Auto-Generate / Transcribe Captions
   const handleAutoGenerateCaptions = async () => {
-    if (tracks.every((t) => t.clips.length === 0)) {
+    const sourceUrl = lastDetectionUrlRef.current;
+    if (!sourceUrl || tracks.every((t) => t.clips.length === 0)) {
       setCaptionsNotice('Upload a video first, then generate captions from its speech.');
       return;
     }
-    // No speech-to-text service is connected yet, so there is nothing real to
-    // transcribe. Say so instead of silently doing nothing (or inventing text).
-    setCaptionsNotice(
-      "Auto captions need a speech-to-text service, which isn't connected yet. You can add caption lines by hand meanwhile."
-    );
+    setIsTranscribing(true);
+    setCaptionsNotice(null);
+    try {
+      const id = await uploadMedia(sourceUrl);
+      const res = await fetch(`/api/media/${id}/transcribe`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Transcription failed (${res.status})`);
+      if (lastDetectionUrlRef.current !== sourceUrl) return; // a different video was loaded meanwhile
+      const lines: CaptionSegment[] = (data.lines || []).map(
+        (l: { startMs: number; endMs: number; text: string }, i: number) => ({
+          id: `cap-auto-${i}`, startMs: l.startMs, endMs: l.endMs, text: l.text,
+        })
+      );
+      if (lines.length === 0) {
+        setCaptionsNotice('No speech was found in this video.');
+        return;
+      }
+      // Transcripts are in original-media time; if silences are already cut,
+      // keep the originals for Restore and show them shifted onto the cut timeline.
+      originalCaptionsRef.current = lines;
+      setCaptions(isSilenceCut ? removeRangesFromTimedItems<CaptionSegment>(lines, silenceSegments) : lines);
+    } catch (e) {
+      setCaptionsNotice(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsTranscribing(false);
+    }
   };
 
   // AI Short Clip Selection -> Loads into timeline
