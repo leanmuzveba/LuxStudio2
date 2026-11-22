@@ -152,14 +152,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, [onTogglePlay, onSeek, currentTimeMs, durationMs]);
 
   // Playback control actions
-  const handlePlay = () => {
-    if (!isPlaying) onTogglePlay();
-  };
-
-  const handlePause = () => {
-    if (isPlaying) onTogglePlay();
-  };
-
   const handleStop = () => {
     if (isPlaying) onTogglePlay();
     onSeek(0);
@@ -360,7 +352,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </span>
         </div>
 
-        {/* Playback Controls: Backward, Play, Pause, Stop, Fast Forward */}
+        {/* Playback Controls: Backward, Play/Pause, Stop, Fast Forward */}
         <div className="flex items-center gap-1">
           {/* Backward */}
           <button
@@ -372,32 +364,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <Rewind className="w-4 h-4 fill-current" />
           </button>
 
-          {/* Play */}
+          {/* Play / Pause (one toggle button) */}
           <button
             id="btn-ctrl-play"
-            onClick={handlePlay}
-            title="Play (Space)"
-            className={`p-1.5 transition-all active:scale-95 ${
-              isPlaying
-                ? 'text-[#FCA311] bg-[#FCA311]/15'
-                : 'text-gray-300 hover:text-white hover:bg-white/5'
-            }`}
+            onClick={onTogglePlay}
+            title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
+            aria-label={isPlaying ? 'Pause' : 'Play'}
+            className="p-1.5 text-[#FCA311] bg-[#FCA311]/15 hover:bg-[#FCA311]/25 transition-all active:scale-95"
           >
-            <Play className="w-4 h-4 fill-current ml-0.5" />
-          </button>
-
-          {/* Pause */}
-          <button
-            id="btn-ctrl-pause"
-            onClick={handlePause}
-            title="Pause (Space)"
-            className={`p-1.5 transition-all active:scale-95 ${
-              !isPlaying
-                ? 'text-[#FCA311] bg-[#FCA311]/15'
-                : 'text-gray-300 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <Pause className="w-4 h-4 fill-current" />
+            {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
           </button>
 
           {/* Stop */}
