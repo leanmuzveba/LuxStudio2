@@ -120,11 +120,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       id="export-modal-backdrop"
       className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 select-none"
     >
-      <div className="bg-[#0b1222] border border-[#14213D] w-full max-w-lg overflow-hidden shadow-2xl">
+      <div className="bg-[#0b1222] border border-[#14213D] w-full max-w-lg overflow-hidden shadow-2xl rounded-2xl">
         {/* Modal Header */}
         <div className="p-5 border-b border-white/10 flex items-center justify-between bg-[#0e162b]">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-[#FCA311]/20 border border-[#FCA311]/40 flex items-center justify-center text-[#FCA311]">
+            <div className="w-8 h-8 rounded-lg bg-[#FCA311]/20 border border-[#FCA311]/40 flex items-center justify-center text-[#FCA311]">
               <Download className="w-4 h-4" />
             </div>
             <div>

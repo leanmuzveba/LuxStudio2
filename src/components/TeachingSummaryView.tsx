@@ -74,7 +74,7 @@ export const TeachingSummaryView: React.FC<TeachingSummaryViewProps> = ({
       <div className="p-6 border-b border-[#14213D] bg-gradient-to-r from-[#0c1426] via-[#101b33] to-[#0c1426] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1.5">
-            <div className="w-8 h-8 bg-[#FCA311]/20 border border-[#FCA311]/40 flex items-center justify-center text-[#FCA311]">
+            <div className="w-8 h-8 rounded-lg bg-[#FCA311]/20 border border-[#FCA311]/40 flex items-center justify-center text-[#FCA311]">
               <FileText className="w-4 h-4" />
             </div>
             <h2 className="text-xl font-extrabold tracking-tight text-white">
@@ -243,7 +243,7 @@ export const TeachingSummaryView: React.FC<TeachingSummaryViewProps> = ({
               <div className="space-y-3">
                 {/* Church Profile Header */}
                 <div className="flex items-center gap-2.5 pb-2 border-b border-white/5">
-                  <div className="w-8 h-8 bg-[#14213D] border border-[#FCA311] flex items-center justify-center text-[10px] font-black text-[#FCA311]">
+                  <div className="w-8 h-8 rounded-lg bg-[#14213D] border border-[#FCA311] flex items-center justify-center text-[10px] font-black text-[#FCA311]">
                     {getChurchInitials(branding.churchName)}
                   </div>
                   <div>

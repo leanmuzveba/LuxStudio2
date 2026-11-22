@@ -1,7 +1,14 @@
 @import "tailwindcss";
 
-*, *::before, *::after {
-  border-radius: 0 !important;
+/* CapCut-style rounded controls. In the base layer so any rounded-* utility
+   on an element still wins. Panels get their rounding in App.tsx. */
+@layer base {
+  button,
+  select,
+  textarea,
+  input:not([type="range"]):not([type="checkbox"]):not([type="radio"]) {
+    border-radius: 6px;
+  }
 }
 
 /* ==========================================================================

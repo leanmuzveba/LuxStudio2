@@ -96,11 +96,11 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       id="upload-modal-backdrop"
       className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 select-none"
     >
-      <div className="bg-[#0b1222] border border-[#14213D] w-full max-w-lg overflow-hidden shadow-2xl">
+      <div className="bg-[#0b1222] border border-[#14213D] w-full max-w-lg overflow-hidden shadow-2xl rounded-2xl">
         {/* Modal Header */}
         <div className="p-5 border-b border-white/10 flex items-center justify-between bg-[#0e162b]">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-[#FCA311]/20 border border-[#FCA311]/40 flex items-center justify-center text-[#FCA311]">
+            <div className="w-8 h-8 rounded-lg bg-[#FCA311]/20 border border-[#FCA311]/40 flex items-center justify-center text-[#FCA311]">
               <Upload className="w-4 h-4" />
             </div>
             <div>
@@ -125,7 +125,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
             onDragLeave={handleDrag}
             onDragOver={handleDrag}
             onDrop={handleDrop}
-            className={`border-2 border-dashed p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer ${
+            className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer ${
               dragActive
                 ? 'border-[#FCA311] bg-[#14213D]/40 scale-102'
                 : 'border-white/15 bg-[#060a14] hover:border-white/30'
@@ -140,7 +140,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
               onChange={handleFileInput}
             />
 
-            <div className="w-12 h-12 bg-[#14213D] border border-white/10 flex items-center justify-center text-[#FCA311] mb-3 shadow-lg">
+            <div className="w-12 h-12 rounded-xl bg-[#14213D] border border-white/10 flex items-center justify-center text-[#FCA311] mb-3 shadow-lg">
               <FileVideo className="w-6 h-6" />
             </div>
 

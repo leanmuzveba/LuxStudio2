@@ -572,9 +572,9 @@ export function App() {
       />
 
       {/* Main Workspace Area with Left Navigation Bar below Logo */}
-      <main className="flex-1 flex flex-col overflow-hidden relative">
+      <main className="flex-1 flex flex-col overflow-hidden relative px-1.5 pb-1.5 pt-1.5">
         {/* Upper Row: Left Nav + Active View (Timeline row lives outside this row so it can span full width) */}
-        <div className="flex-1 flex min-h-0 overflow-hidden relative">
+        <div className="flex-1 flex gap-1.5 min-h-0 overflow-hidden relative">
           {/* Vertical Navigation Bar (Timeline Editor, AI Short Clips, Teaching Summary, Brand Kit) */}
           <LeftNav
             currentView={currentView}
@@ -583,12 +583,12 @@ export function App() {
           />
 
           {/* View Workspace Content Area */}
-          <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative">
+          <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative rounded-xl">
             {/* VIEW 1: Video Stage + Captions Editor (Timeline rendered full-width below) */}
             {currentView === 'editor' && (
               <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden relative select-none">
                 {/* Video Player Canvas Stage - Maximized space */}
-                <div className="flex-1 h-full min-h-[200px] relative overflow-hidden">
+                <div className="flex-1 h-full min-h-[200px] relative overflow-hidden rounded-xl">
                   <VideoPlayer
                     currentTimeMs={currentTimeMs}
                     durationMs={durationMs}
@@ -609,12 +609,12 @@ export function App() {
                 <div
                   id="splitter-vertical-captions"
                   onMouseDown={handleStartDragRightPanel}
-                  className={`hidden md:flex w-2.5 -mx-1 z-30 cursor-col-resize group relative items-center justify-center transition-colors select-none ${
+                  className={`hidden md:flex w-1.5 rounded-full z-30 cursor-col-resize group relative items-center justify-center transition-colors select-none ${
                     isDraggingH ? 'bg-[#00e5ff]' : 'hover:bg-[#00e5ff]/50 bg-transparent'
                   }`}
                   title="Drag to resize Captions panel (Adjustable boundary)"
                 >
-                  <div className="w-1 h-full bg-[#14213D] group-hover:bg-[#00e5ff] transition-colors flex items-center justify-center">
+                  <div className="w-1 h-full bg-transparent group-hover:bg-[#00e5ff] rounded-full transition-colors flex items-center justify-center">
                     <div className="w-1 h-8 bg-white/40 group-hover:bg-white rounded-full" />
                   </div>
                 </div>
@@ -623,7 +623,7 @@ export function App() {
                 <div
                   id="captions-panel-container"
                   style={{ width: `${rightPanelWidth}px` }}
-                  className="w-full shrink-0 h-64 md:h-full border-t md:border-t-0 flex flex-col overflow-hidden"
+                  className="w-full shrink-0 h-64 md:h-full border-t md:border-t-0 flex flex-col overflow-hidden rounded-xl"
                 >
                   <CaptionsEditor
                     captions={captions}
@@ -699,12 +699,12 @@ export function App() {
             <div
               id="splitter-horizontal-timeline"
               onMouseDown={handleStartDragTimeline}
-              className={`h-2.5 -my-1 z-30 cursor-row-resize group relative flex items-center justify-center transition-colors select-none ${
+              className={`h-1.5 rounded-full z-30 cursor-row-resize group relative flex items-center justify-center transition-colors select-none ${
                 isDraggingV ? 'bg-[#00e5ff]' : 'hover:bg-[#00e5ff]/50 bg-transparent'
               }`}
               title="Drag to adjust Timeline height (Adjustable boundary)"
             >
-              <div className="h-1 w-full bg-[#14213D] group-hover:bg-[#00e5ff] transition-colors flex items-center justify-center">
+              <div className="h-1 w-full bg-transparent group-hover:bg-[#00e5ff] rounded-full transition-colors flex items-center justify-center">
                 <div className="h-1 w-14 bg-white/40 group-hover:bg-white rounded-full" />
               </div>
             </div>
@@ -713,7 +713,7 @@ export function App() {
             <div
               id="timeline-panel-container"
               style={{ height: `${timelineHeight}px` }}
-              className="shrink-0 w-full overflow-hidden"
+              className="shrink-0 w-full overflow-hidden rounded-xl"
             >
               <TimelineEditor
                 tracks={tracks}

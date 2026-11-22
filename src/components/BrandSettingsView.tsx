@@ -46,7 +46,7 @@ export const BrandSettingsView: React.FC<BrandSettingsViewProps> = ({
       <div className="p-6 border-b border-[#14213D] bg-gradient-to-r from-[#0c1426] via-[#101b33] to-[#0c1426] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1.5">
-            <div className="w-8 h-8 bg-[#FCA311]/20 border border-[#FCA311]/40 flex items-center justify-center text-[#FCA311]">
+            <div className="w-8 h-8 rounded-lg bg-[#FCA311]/20 border border-[#FCA311]/40 flex items-center justify-center text-[#FCA311]">
               <Building2 className="w-4 h-4" />
             </div>
             <h2 className="text-xl font-extrabold tracking-tight text-white">

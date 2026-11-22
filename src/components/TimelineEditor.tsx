@@ -784,7 +784,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                     e.stopPropagation();
                     setSelectedClipId(clip.id);
                   }}
-                  className={`absolute h-14 px-2.5 py-1 flex flex-col justify-between transition-all border ${
+                  className={`absolute h-14 px-2.5 py-1 flex flex-col justify-between transition-all border rounded-md overflow-hidden ${
                     toolMode === 'select' ? 'cursor-pointer' : ''
                   } ${
                     isSelected
@@ -820,7 +820,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
               return (
                 <div
                   key={clip.id}
-                  className="absolute h-14 flex flex-col justify-between bg-[#082b33] border border-[#2dd4bf]/40 overflow-hidden"
+                  className="absolute h-14 flex flex-col justify-between bg-[#082b33] border border-[#2dd4bf]/40 overflow-hidden rounded-md"
                   style={{
                     left: `${left}%`,
                     width: `${width}%`,
@@ -885,7 +885,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                   key={cap.id}
                   onMouseDown={(e) => handleCaptionDragStart(e, cap, 'move')}
                   title={cap.text}
-                  className={`group absolute h-8 px-2 flex items-center cursor-grab active:cursor-grabbing transition-all border text-[10px] font-medium truncate select-none ${
+                  className={`group absolute h-8 px-2 flex items-center cursor-grab active:cursor-grabbing transition-all border rounded-md text-[10px] font-medium truncate select-none ${
                     isActive
                       ? 'bg-[#FCA311] text-black font-bold border-white shadow-md'
                       : 'bg-[#14213D]/90 text-gray-200 border-white/10 hover:border-white/30'

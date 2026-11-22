@@ -49,7 +49,7 @@ export const LeftNav: React.FC<LeftNavProps> = ({
   return (
     <aside
       id="left-vertical-navigation"
-      className="w-14 md:w-44 shrink-0 bg-[#070d1a] border-r border-[#14213D] flex flex-col py-3 select-none z-20 transition-all"
+      className="w-14 md:w-44 shrink-0 bg-[#070d1a] border border-[#14213D] rounded-xl flex flex-col py-3 select-none z-20 transition-all"
     >
       <div className="px-2 pb-2 mb-1 border-b border-[#14213D]/60 hidden md:block">
         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
