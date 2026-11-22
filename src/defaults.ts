@@ -25,6 +25,8 @@ export const DEFAULT_CAPTION_STYLES: Record<'minimal' | 'bold-impact' | 'modern-
     animation: 'fade',
     position: 'bottom',
     uppercase: false,
+    wordsPerLine: 6,
+    maxLines: 2,
   },
   'bold-impact': {
     templateType: 'bold-impact',
@@ -37,6 +39,8 @@ export const DEFAULT_CAPTION_STYLES: Record<'minimal' | 'bold-impact' | 'modern-
     animation: 'pop',
     position: 'center',
     uppercase: true,
+    wordsPerLine: 3,
+    maxLines: 1,
   },
   'modern-kinetic': {
     templateType: 'modern-kinetic',
@@ -49,5 +53,7 @@ export const DEFAULT_CAPTION_STYLES: Record<'minimal' | 'bold-impact' | 'modern-
     animation: 'highlight',
     position: 'lower-third',
     uppercase: false,
+    wordsPerLine: 4,
+    maxLines: 1,
   },
 };

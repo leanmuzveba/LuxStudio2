@@ -412,6 +412,21 @@ interface TextTemplateCard {
   customRender: (text: string) => React.ReactNode;
 }
 
+// Clean slate a text template is applied on top of.
+const TEMPLATE_BASE: CaptionStyle = {
+  templateType: 'custom',
+  fontFamily: 'Montserrat',
+  fontSize: 26,
+  textColor: '#FFFFFF',
+  highlightColor: '#FCA311',
+  backgroundColor: '',
+  animation: 'pop',
+  position: 'bottom',
+  uppercase: false,
+  wordsPerLine: 3,
+  maxLines: 1,
+};
+
 const TEXT_TEMPLATES: TextTemplateCard[] = [
   {
     id: 'tpl-quick-black-pill',
@@ -419,6 +434,9 @@ const TEXT_TEMPLATES: TextTemplateCard[] = [
     sampleText: 'QUICK',
     isPro: true,
     style: {
+      animation: 'pop',
+      wordsPerLine: 3,
+      maxLines: 1,
       textColor: '#FFFFFF',
       badgeBgColor: '#000000',
       fontFamily: 'Montserrat',
@@ -436,6 +454,9 @@ const TEXT_TEMPLATES: TextTemplateCard[] = [
     sampleText: 'QUICK',
     isPro: false,
     style: {
+      animation: 'fade',
+      wordsPerLine: 4,
+      maxLines: 1,
       textColor: '#FFFFFF',
       shadowColor: '#000000',
       shadowBlur: 4,
@@ -456,6 +477,9 @@ const TEXT_TEMPLATES: TextTemplateCard[] = [
     sampleText: 'The quick',
     isPro: true,
     style: {
+      animation: 'slide-up',
+      wordsPerLine: 5,
+      maxLines: 2,
       textColor: '#FACC15',
       isItalic: true,
       strokeColor: '#000000',
@@ -475,6 +499,9 @@ const TEXT_TEMPLATES: TextTemplateCard[] = [
     sampleText: 'QUICK',
     isPro: true,
     style: {
+      animation: 'pop',
+      wordsPerLine: 2,
+      maxLines: 1,
       textColor: '#FACC15',
       strokeColor: '#000000',
       strokeWidth: 4,
@@ -493,6 +520,9 @@ const TEXT_TEMPLATES: TextTemplateCard[] = [
     sampleText: 'QUICK',
     isPro: true,
     style: {
+      animation: 'pop',
+      wordsPerLine: 3,
+      maxLines: 1,
       textColor: '#FFFFFF',
       fontFamily: 'Montserrat',
       uppercase: true,
@@ -511,6 +541,9 @@ const TEXT_TEMPLATES: TextTemplateCard[] = [
     sampleText: 'THE QUICK',
     isPro: false,
     style: {
+      animation: 'highlight',
+      wordsPerLine: 2,
+      maxLines: 2,
       textColor: '#22C55E',
       highlightColor: '#FFFFFF',
       fontFamily: 'Montserrat',
@@ -529,6 +562,9 @@ const TEXT_TEMPLATES: TextTemplateCard[] = [
     sampleText: 'quick',
     isPro: true,
     style: {
+      animation: 'fade',
+      wordsPerLine: 5,
+      maxLines: 1,
       textColor: '#FFFFFF',
       fontFamily: 'Plus Jakarta Sans',
       uppercase: false,
@@ -548,6 +584,9 @@ const TEXT_TEMPLATES: TextTemplateCard[] = [
     sampleText: 'THE QUICK',
     isPro: true,
     style: {
+      animation: 'highlight',
+      wordsPerLine: 3,
+      maxLines: 1,
       textColor: '#FACC15',
       fontFamily: 'Montserrat',
       uppercase: true,
@@ -1225,7 +1264,11 @@ export const CaptionsEditor: React.FC<CaptionsEditorProps> = ({
                       key={tpl.id}
                       onClick={() => {
                         onStyleChange({
-                          ...captionStyle,
+                          ...TEMPLATE_BASE,
+                          fontSize: captionStyle.fontSize,
+                          position: captionStyle.position,
+                          highlightColor: captionStyle.highlightColor,
+                          templateType: tpl.id,
                           ...tpl.style,
                         });
                       }}
@@ -1331,6 +1374,30 @@ export const CaptionsEditor: React.FC<CaptionsEditorProps> = ({
                 </button>
               ))}
             </div>
+
+            <h4 className="text-[10px] font-bold text-blue-200 pt-1">Subtitle Lines</h4>
+            {([
+              { key: 'wordsPerLine', label: 'Words per line', min: 1, max: 8, fallback: 3 },
+              { key: 'maxLines', label: 'Lines on screen', min: 1, max: 2, fallback: 1 },
+            ] as const).map((ctl) => {
+              const value = captionStyle[ctl.key] ?? ctl.fallback;
+              return (
+                <label key={ctl.key} className="flex items-center gap-2 text-[10px] text-blue-200/80">
+                  <span className="w-24 shrink-0">{ctl.label}</span>
+                  <input
+                    id={`input-caption-${ctl.key}`}
+                    type="range"
+                    min={ctl.min}
+                    max={ctl.max}
+                    step={1}
+                    value={value}
+                    onChange={(e) => onStyleChange({ ...captionStyle, [ctl.key]: Number(e.target.value) })}
+                    className="flex-1 accent-[#FCA311]"
+                  />
+                  <span className="w-4 text-right font-mono text-white">{value}</span>
+                </label>
+              );
+            })}
           </div>
         )}
 

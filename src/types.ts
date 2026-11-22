@@ -47,6 +47,9 @@ export interface CaptionStyle {
   strokeColor?: string;
   strokeWidth?: number;
   animation: 'pop' | 'highlight' | 'fade' | 'slide-up' | 'none';
+  /** Subtitle paging: words shown per line, and lines per on-screen page. */
+  wordsPerLine?: number;
+  maxLines?: number;
   position: 'bottom' | 'center' | 'lower-third';
   uppercase: boolean;
   textCase?: 'uppercase' | 'lowercase' | 'title' | 'none';

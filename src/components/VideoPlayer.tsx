@@ -102,6 +102,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             captionStyle,
             customVideoElement: videoRef.current,
             framing,
+            animate: isPlaying,
           });
         }
       }
@@ -110,7 +111,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, [currentTimeMs, aspectRatio, activeCaption, captionStyle, framing]);
+  }, [currentTimeMs, aspectRatio, activeCaption, captionStyle, framing, isPlaying]);
 
   // Synchronize custom video element if uploaded
   useEffect(() => {

@@ -10,6 +10,8 @@ interface RenderFrameOptions {
   captionStyle: CaptionStyle;
   customVideoElement?: HTMLVideoElement | null;
   framing?: VideoFraming;
+  /** Run caption entrance animations (playing); paused frames show captions fully in. */
+  animate?: boolean;
 }
 
 /** Where the video lands in a w×h frame: aspect preserved, zoomed from "fit", panned within its overflow. */
@@ -36,6 +38,7 @@ export function drawVideoFrame({
   captionStyle,
   customVideoElement,
   framing = { zoom: 1, x: 0, y: 0 },
+  animate = true,
 }: RenderFrameOptions) {
   // If user uploaded their own video and it has a decoded frame ready, draw it
   // — regardless of play/pause state, so the canvas always shows the frame at
@@ -54,7 +57,7 @@ export function drawVideoFrame({
 
   // Draw Live Captions
   if (activeCaption) {
-    drawCaptionOverlay(ctx, width, height, activeCaption, captionStyle, timeMs, aspectRatio);
+    drawCaptionOverlay(ctx, width, height, activeCaption, captionStyle, timeMs, aspectRatio, animate);
   }
 }
 
@@ -87,162 +90,192 @@ function drawEmptyState(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.fillText('Upload a video to begin', w * 0.5, h * 0.5 + iconSize * 0.9);
 }
 
+interface TimedWord { text: string; startMs: number; endMs: number }
+
+/**
+ * Word timings for a caption line: the real per-word timings when the
+ * caption has them, otherwise the line's duration shared out by word length
+ * (longer words take longer to say), which is close enough for paging.
+ */
+export function captionWordTimings(caption: CaptionSegment): TimedWord[] {
+  const real = caption.words?.filter((w) => w.word.trim());
+  if (real && real.length) return real.map((w) => ({ text: w.word.trim(), startMs: w.startMs, endMs: w.endMs }));
+  const words = caption.text.split(/\s+/).filter(Boolean);
+  const weights = words.map((w) => w.length + 2);
+  const total = weights.reduce((a, b) => a + b, 0) || 1;
+  const dur = Math.max(1, caption.endMs - caption.startMs);
+  let t = caption.startMs;
+  return words.map((text, i) => {
+    const startMs = t;
+    t += (dur * weights[i]) / total;
+    return { text, startMs, endMs: t };
+  });
+}
+
+/**
+ * Subtitle paging: a caption line is shown a few words at a time
+ * (wordsPerLine x maxLines per page), each page appearing when its first word
+ * is spoken. Returns the page on screen at timeMs, split into lines.
+ */
+export function captionPageAt(words: TimedWord[], timeMs: number, wordsPerLine: number, maxLines: number) {
+  const perLine = Math.max(1, wordsPerLine);
+  const perPage = perLine * Math.max(1, maxLines);
+  let pageStart = 0;
+  for (let i = 0; i < words.length; i += perPage) if (words[i].startMs <= timeMs) pageStart = i;
+  const page = words.slice(pageStart, pageStart + perPage);
+  const lines: TimedWord[][] = [];
+  for (let i = 0; i < page.length; i += perLine) lines.push(page.slice(i, i + perLine));
+  return { lines, startMs: page[0]?.startMs ?? 0 };
+}
+
+const ANIM_MS = 260;
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+const easeOut = (p: number) => 1 - Math.pow(1 - p, 3);
+// Overshoots past 1 then settles: the "bounce" in Pop.
+const easeOutBack = (p: number) => 1 + 2.70158 * Math.pow(p - 1, 3) + 1.70158 * Math.pow(p - 1, 2);
+
+function applyCase(text: string, style: CaptionStyle) {
+  const c = style.textCase || (style.uppercase ? 'uppercase' : 'none');
+  if (c === 'uppercase') return text.toUpperCase();
+  if (c === 'lowercase') return text.toLowerCase();
+  if (c === 'title') return text.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  return text;
+}
+
 function drawCaptionOverlay(
   ctx: CanvasRenderingContext2D,
   w: number,
   h: number,
   caption: CaptionSegment,
   style: CaptionStyle,
-  _timeMs: number,
-  aspectRatio: AspectRatio
+  timeMs: number,
+  aspectRatio: AspectRatio,
+  animate: boolean
 ) {
-  ctx.save();
   const isVertical = w < h || aspectRatio === '9:16' || aspectRatio === '3:4';
+  const wordsPerLine = style.wordsPerLine ?? (isVertical ? 3 : 6);
+  const maxLines = style.maxLines ?? 1;
+  const { lines, startMs } = captionPageAt(captionWordTimings(caption), timeMs, wordsPerLine, maxLines);
+  if (!lines.length) return;
 
-  // Apply casing
-  let text = caption.text;
-  const effectiveCase = style.textCase || (style.uppercase ? 'uppercase' : 'none');
-  if (effectiveCase === 'uppercase') {
-    text = text.toUpperCase();
-  } else if (effectiveCase === 'lowercase') {
-    text = text.toLowerCase();
-  } else if (effectiveCase === 'title') {
-    text = text.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.substr(1).toLowerCase());
-  }
+  let y: number;
+  if (style.position === 'center') y = h * 0.5;
+  else if (style.position === 'lower-third') y = isVertical ? h * 0.68 : h * 0.75;
+  else y = isVertical ? h * 0.76 : h * 0.84;
 
-  // Calculate dynamic vertical position
-  let y = h * 0.72;
-  if (style.position === 'center') {
-    y = h * 0.50;
-  } else if (style.position === 'lower-third') {
-    y = isVertical ? h * 0.68 : h * 0.75;
-  } else {
-    // bottom safe
-    y = isVertical ? h * 0.76 : h * 0.84;
-  }
-
-  // Determine font
-  const baseFontSize = isVertical ? style.fontSize : style.fontSize * 1.15;
   const fontStyle = style.isItalic ? 'italic ' : '';
   const fontWeight = style.isBold !== false ? '800' : '500';
-  ctx.font = `${fontStyle}${fontWeight} ${baseFontSize}px "${style.fontFamily}", sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-
-  // Split into 2-3 lines max for optimal mobile short-form readability
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let currentLine = '';
-  const maxLineChars = isVertical ? 22 : 36;
-
-  for (const word of words) {
-    if ((currentLine + ' ' + word).trim().length > maxLineChars) {
-      lines.push(currentLine.trim());
-      currentLine = word;
-    } else {
-      currentLine = (currentLine + ' ' + word).trim();
-    }
+  let fontSize = isVertical ? style.fontSize : style.fontSize * 1.15;
+  const setFont = () => {
+    ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${style.fontFamily}", sans-serif`;
+  };
+  setFont();
+  const texts = lines.map((line) => line.map((word) => applyCase(word.text, style)));
+  const lineWidth = (ws: string[]) =>
+    ws.reduce((a, t) => a + ctx.measureText(t).width, 0) + ctx.measureText(' ').width * (ws.length - 1);
+  // A page never overflows the frame: shrink the font rather than wrap more.
+  const widest = Math.max(...texts.map(lineWidth));
+  if (widest > w * 0.88) {
+    fontSize *= (w * 0.88) / widest;
+    setFont();
   }
-  if (currentLine) lines.push(currentLine.trim());
+  const spaceW = ctx.measureText(' ').width;
 
-  const lineHeight = baseFontSize * 1.35;
-  const startY = y - ((lines.length - 1) * lineHeight) / 2;
+  // Page entrance animation.
+  const p = animate ? clamp01((timeMs - startMs) / ANIM_MS) : 1;
+  let alpha = 1;
+  let scale = 1;
+  let offsetY = 0;
+  if (style.animation === 'fade') alpha = easeOut(p);
+  else if (style.animation === 'pop') {
+    scale = 0.6 + 0.4 * easeOutBack(p);
+    alpha = clamp01(p * 3);
+  } else if (style.animation === 'slide-up') {
+    offsetY = (1 - easeOut(p)) * fontSize * 0.9;
+    alpha = easeOut(p);
+  }
 
-  lines.forEach((line, index) => {
-    const lineY = startY + index * lineHeight;
-    const textWidth = ctx.measureText(line).width;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(w / 2, y + offsetY);
+  ctx.scale(scale, scale);
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
 
-    ctx.save();
+  const lineHeight = fontSize * 1.3;
+  const top = -((lines.length - 1) * lineHeight) / 2;
 
-    // 1. Badge Background if set
-    if (style.badgeBgColor) {
-      const padX = 16;
-      const padY = 8;
-      const boxW = textWidth + padX * 2;
-      const boxH = baseFontSize + padY;
-      const boxX = w * 0.5 - boxW / 2;
-      const boxY = lineY - baseFontSize / 2 - padY / 2;
+  lines.forEach((line, li) => {
+    const ly = top + li * lineHeight;
+    const lw = lineWidth(texts[li]);
 
-      ctx.fillStyle = style.badgeBgColor;
-      roundRect(ctx, boxX, boxY, boxW, boxH, 8);
+    // Box behind the line: the template's badge or backdrop colour.
+    const box = style.badgeBgColor || style.backgroundColor;
+    if (box) {
+      const padX = fontSize * 0.45;
+      const padY = fontSize * 0.22;
+      ctx.fillStyle = box;
+      roundRect(ctx, -lw / 2 - padX, ly - fontSize / 2 - padY, lw + padX * 2, fontSize + padY * 2, fontSize * 0.3);
       ctx.fill();
-
-      if (style.badgeBorderColor) {
-        ctx.strokeStyle = style.badgeBorderColor;
+      if (style.badgeBorderColor || style.templateType === 'modern-kinetic') {
+        ctx.strokeStyle = style.badgeBorderColor || style.highlightColor;
         ctx.lineWidth = 2;
-        roundRect(ctx, boxX, boxY, boxW, boxH, 8);
         ctx.stroke();
       }
-    } else if (style.templateType === 'minimal' || style.backgroundColor) {
-      const padX = 18;
-      const padY = 8;
-      ctx.fillStyle = style.backgroundColor || 'rgba(20, 33, 61, 0.75)';
-      roundRect(
-        ctx,
-        w * 0.5 - textWidth / 2 - padX,
-        lineY - baseFontSize / 2 - padY / 2,
-        textWidth + padX * 2,
-        baseFontSize + padY,
-        8
-      );
-      ctx.fill();
-    } else if (style.templateType === 'modern-kinetic') {
-      const padX = 22;
-      const padY = 10;
-      const boxW = textWidth + padX * 2;
-      const boxH = baseFontSize + padY;
-      const boxX = w * 0.5 - boxW / 2;
-      const boxY = lineY - baseFontSize / 2 - padY / 2;
-
-      ctx.fillStyle = 'rgba(20, 33, 61, 0.92)';
-      roundRect(ctx, boxX, boxY, boxW, boxH, 10);
-      ctx.fill();
-
-      ctx.strokeStyle = style.highlightColor || '#FCA311';
-      ctx.lineWidth = 2;
-      roundRect(ctx, boxX, boxY, boxW, boxH, 10);
-      ctx.stroke();
     }
 
-    // 2. Shadows & Glow
-    if (style.glowColor) {
-      ctx.shadowColor = style.glowColor;
-      ctx.shadowBlur = style.shadowBlur || 16;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 0;
-    } else if (style.shadowColor) {
-      ctx.shadowColor = style.shadowColor;
-      ctx.shadowBlur = style.shadowBlur !== undefined ? style.shadowBlur : 4;
-      ctx.shadowOffsetX = style.shadowOffsetX !== undefined ? style.shadowOffsetX : 2;
-      ctx.shadowOffsetY = style.shadowOffsetY !== undefined ? style.shadowOffsetY : 3;
-    }
+    let x = -lw / 2;
+    line.forEach((word, wi) => {
+      const text = texts[li][wi];
+      const ww = ctx.measureText(text).width;
+      const spoken = timeMs >= word.startMs;
+      const active = spoken && timeMs < word.endMs;
 
-    // 3. Stroke / Outline
-    if (style.strokeColor) {
-      ctx.strokeStyle = style.strokeColor;
-      ctx.lineWidth = style.strokeWidth || Math.max(5, baseFontSize * 0.2);
-      ctx.lineJoin = 'round';
-      ctx.strokeText(line, w * 0.5, lineY);
-    }
+      ctx.save();
+      let color = style.textColor || '#FFFFFF';
+      if (style.animation === 'highlight') {
+        // Karaoke style: the word being said pops in the highlight colour;
+        // words not said yet are dimmed.
+        if (active) {
+          color = style.highlightColor || '#FCA311';
+          const s = 1.03 + 0.05 * Math.sin(Math.PI * clamp01((timeMs - word.startMs) / 180));
+          ctx.translate(x + ww / 2, ly);
+          ctx.scale(s, s);
+          ctx.translate(-(x + ww / 2), -ly);
+        } else if (!spoken) {
+          ctx.globalAlpha *= 0.5;
+        }
+      }
 
-    // 4. Fill Text
-    ctx.fillStyle = style.textColor || '#FFFFFF';
-    ctx.fillText(line, w * 0.5, lineY);
-
-    // 5. Underline if enabled
-    if (style.isUnderline) {
-      const underlineY = lineY + baseFontSize * 0.5 + 3;
-      ctx.strokeStyle = style.textColor || '#FFFFFF';
-      ctx.lineWidth = Math.max(2, baseFontSize * 0.08);
-      ctx.beginPath();
-      ctx.moveTo(w * 0.5 - textWidth / 2, underlineY);
-      ctx.lineTo(w * 0.5 + textWidth / 2, underlineY);
-      ctx.stroke();
-    }
-
-    ctx.restore();
+      if (style.glowColor) {
+        ctx.shadowColor = style.glowColor;
+        ctx.shadowBlur = style.shadowBlur || 16;
+      } else if (style.shadowColor) {
+        ctx.shadowColor = style.shadowColor;
+        ctx.shadowBlur = style.shadowBlur ?? 4;
+        ctx.shadowOffsetX = style.shadowOffsetX ?? 2;
+        ctx.shadowOffsetY = style.shadowOffsetY ?? 3;
+      }
+      if (style.strokeColor) {
+        ctx.strokeStyle = style.strokeColor;
+        ctx.lineWidth = style.strokeWidth || Math.max(4, fontSize * 0.18);
+        ctx.lineJoin = 'round';
+        ctx.strokeText(text, x, ly);
+      }
+      ctx.fillStyle = color;
+      ctx.fillText(text, x, ly);
+      if (style.isUnderline) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = Math.max(2, fontSize * 0.08);
+        ctx.beginPath();
+        ctx.moveTo(x, ly + fontSize * 0.55);
+        ctx.lineTo(x + ww, ly + fontSize * 0.55);
+        ctx.stroke();
+      }
+      ctx.restore();
+      x += ww + spaceW;
+    });
   });
-
   ctx.restore();
 }
 
@@ -252,9 +285,8 @@ function roundRect(
   y: number,
   width: number,
   height: number,
-  _radius?: number | number[]
+  radius = 0
 ) {
   ctx.beginPath();
-  ctx.rect(x, y, width, height);
-  ctx.closePath();
+  ctx.roundRect(x, y, width, height, radius);
 }
