@@ -199,6 +199,8 @@ Do not transcribe music or noise. Do not summarise or invent words. If there is 
 }
 
 const transcribing = new Map<string, Promise<CaptionLine[]>>();
+// Per-file progress while a job runs: total = 0 while ffmpeg is still splitting.
+const transcribeProgress = new Map<string, { done: number; total: number }>();
 
 async function transcribeFile(file: string, apiKey: string): Promise<CaptionLine[]> {
   const cacheFile = `${file}.captions.json`;
@@ -212,21 +214,32 @@ async function transcribeFile(file: string, apiKey: string): Promise<CaptionLine
       path.join(dir, "%04d.mp3"),
     ]);
     const chunks = fs.readdirSync(dir).filter((n) => n.endsWith(".mp3")).sort();
+    const progress = { done: 0, total: chunks.length };
+    transcribeProgress.set(file, progress);
     const ai = new GoogleGenAI({ apiKey });
-    const results: CaptionLine[][] = new Array(chunks.length);
+    // Finished parts survive a failed run (a part can still hit Gemini "high
+    // demand" after every retry), so clicking again only redoes the rest.
+    const partialFile = `${file}.captions.partial.json`;
+    const results: (CaptionLine[] | null)[] = fs.existsSync(partialFile)
+      ? JSON.parse(fs.readFileSync(partialFile, "utf8"))
+      : new Array(chunks.length).fill(null);
+    progress.done = results.filter(Boolean).length;
     let next = 0;
     const worker = async () => {
       while (next < chunks.length) {
         const i = next++;
+        if (results[i]) continue;
         const chunkPath = path.join(dir, chunks[i]);
-        if ((await chunkPeakDb(chunkPath)) < SILENT_CHUNK_MAX_DB) { results[i] = []; continue; }
-        const mp3 = fs.readFileSync(chunkPath);
-        results[i] = await transcribeChunk(ai, mp3, i * TRANSCRIBE_CHUNK_SEC * 1000);
+        if ((await chunkPeakDb(chunkPath)) < SILENT_CHUNK_MAX_DB) results[i] = [];
+        else results[i] = await transcribeChunk(ai, fs.readFileSync(chunkPath), i * TRANSCRIBE_CHUNK_SEC * 1000);
+        progress.done++;
+        fs.writeFileSync(partialFile, JSON.stringify(results));
       }
     };
     await Promise.all(Array.from({ length: Math.min(TRANSCRIBE_CONCURRENCY, chunks.length) }, worker));
-    const lines = results.flat().sort((a, b) => a.startMs - b.startMs);
+    const lines = (results as CaptionLine[][]).flat().sort((a, b) => a.startMs - b.startMs);
     fs.writeFileSync(cacheFile, JSON.stringify(lines));
+    fs.rmSync(partialFile, { force: true });
     return lines;
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -245,7 +258,8 @@ mediaRouter.post("/:id/transcribe", async (req, res) => {
   if (!job) {
     job = transcribeFile(file, apiKey);
     transcribing.set(file, job);
-    job.finally(() => transcribing.delete(file)).catch(() => {});
+    transcribeProgress.set(file, { done: 0, total: 0 });
+    job.finally(() => { transcribing.delete(file); transcribeProgress.delete(file); }).catch(() => {});
   }
   try {
     res.json({ lines: await job });
@@ -253,4 +267,11 @@ mediaRouter.post("/:id/transcribe", async (req, res) => {
     console.error(`Transcription failed for ${req.params.id}:`, err);
     res.status(502).json({ error: `Transcription failed: ${err?.message || err}` });
   }
+});
+
+// Polled by the client while POST /transcribe is in flight.
+mediaRouter.get("/:id/transcribe/progress", (req, res) => {
+  const file = mediaPath(req.params.id);
+  if (!file) return res.status(400).json({ error: "Invalid media id" });
+  res.json(transcribeProgress.get(file) ?? { done: 0, total: 0 });
 });

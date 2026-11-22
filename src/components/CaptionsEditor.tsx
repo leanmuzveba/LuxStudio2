@@ -30,6 +30,8 @@ interface CaptionsEditorProps {
   isTranscribing: boolean;
   /** Why the last Auto Captions request couldn't run (shown under the button). */
   captionsNotice?: string | null;
+  /** Auto Captions progress: ratio 0..1, or null when it can't be measured yet. */
+  captionsProgress?: { label: string; ratio: number | null } | null;
 }
 
 // Letter Effects Presets (Corresponding to Screenshot 3 Aa Grid)
@@ -569,6 +571,7 @@ export const CaptionsEditor: React.FC<CaptionsEditorProps> = ({
   onAutoGenerateCaptions,
   isTranscribing,
   captionsNotice = null,
+  captionsProgress = null,
 }) => {
   // Top primary tabs: Captions | Text | Animation | Tracking | Text to speech
   const [topTab, setTopTab] = useState<'Captions' | 'Text' | 'Animation' | 'Tracking' | 'Text to speech'>('Captions');
@@ -786,6 +789,21 @@ export const CaptionsEditor: React.FC<CaptionsEditorProps> = ({
                 </button>
               </div>
             </div>
+
+            {isTranscribing && captionsProgress && (
+              <div id="captions-progress" className="px-3 py-2 border-b border-[#14213D]">
+                <div className="flex justify-between text-[10px] text-blue-200/80 mb-1">
+                  <span>{captionsProgress.label}</span>
+                  {captionsProgress.ratio !== null && <span>{Math.round(captionsProgress.ratio * 100)}%</span>}
+                </div>
+                <div className="h-1.5 bg-[#14213D] rounded overflow-hidden">
+                  <div
+                    className={`h-full bg-[#FCA311] transition-[width] duration-500 ${captionsProgress.ratio === null ? 'w-1/3 animate-pulse' : ''}`}
+                    style={captionsProgress.ratio === null ? undefined : { width: `${Math.max(3, captionsProgress.ratio * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
 
             {captionsNotice && (
               <div id="captions-notice" className="px-3 py-2 text-[10px] leading-snug text-amber-200 bg-amber-950/40 border-b border-amber-500/30">

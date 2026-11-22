@@ -198,6 +198,7 @@ export function App() {
   const [isRegeneratingSummary, setIsRegeneratingSummary] = useState<boolean>(false);
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
   const [captionsNotice, setCaptionsNotice] = useState<string | null>(null);
+  const [captionsProgress, setCaptionsProgress] = useState<{ label: string; ratio: number | null } | null>(null);
   const [customVideoUrl, setCustomVideoUrl] = useState<string | null>(null);
 
   // Calculate Active Caption at current playhead time
@@ -312,8 +313,24 @@ export function App() {
     }
     setIsTranscribing(true);
     setCaptionsNotice(null);
+    setCaptionsProgress({ label: 'Uploading video…', ratio: 0 });
+    let poll: ReturnType<typeof setInterval> | undefined;
     try {
-      const id = await uploadMedia(sourceUrl);
+      // Usually already uploaded by silence detection, so this resolves at once.
+      const id = await uploadMedia(sourceUrl, (r) => setCaptionsProgress({ label: 'Uploading video…', ratio: r }));
+      setCaptionsProgress({ label: 'Preparing audio…', ratio: null });
+      poll = setInterval(async () => {
+        try {
+          const p = await (await fetch(`/api/media/${id}/transcribe/progress`)).json();
+          if (p.total > 0) {
+            setCaptionsProgress({
+              label: p.total > 1 ? `Transcribing… ${p.done} of ${p.total} parts done` : 'Transcribing…',
+              // A single part has no intermediate steps to show.
+              ratio: p.total > 1 ? p.done / p.total : null,
+            });
+          }
+        } catch {}
+      }, 1000);
       const res = await fetch(`/api/media/${id}/transcribe`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Transcription failed (${res.status})`);
@@ -332,9 +349,16 @@ export function App() {
       originalCaptionsRef.current = lines;
       setCaptions(isSilenceCut ? removeRangesFromTimedItems<CaptionSegment>(lines, silenceSegments) : lines);
     } catch (e) {
-      setCaptionsNotice(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setCaptionsNotice(
+        /high demand|503|UNAVAILABLE/.test(msg)
+          ? 'Gemini is busy right now, so some of the video could not be transcribed. Click Auto Captions again in a minute; finished parts are kept.'
+          : msg
+      );
     } finally {
+      clearInterval(poll);
       setIsTranscribing(false);
+      setCaptionsProgress(null);
     }
   };
 
@@ -611,6 +635,7 @@ export function App() {
                     onAutoGenerateCaptions={handleAutoGenerateCaptions}
                     isTranscribing={isTranscribing}
                     captionsNotice={captionsNotice}
+                    captionsProgress={captionsProgress}
                   />
                 </div>
               </div>
